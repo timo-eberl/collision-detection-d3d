@@ -8,3 +8,8 @@ The input and expected output (`collision_test_data.bin`) can be generated with 
 ```bash
 cmake -S . -B build_release/ -DCMAKE_BUILD_TYPE=Release -DTICS_ENABLE_DEBUG_VIEW=OFF -DTICS_BUILD_TESTS=OFF -DNARROW_BENCHMARK_STEPS=200 -DNARROW_BENCHMARK_PARTICLE_COUNT=100000 && cmake --build build_release/ --config Release && ./build_release/bin/benchmark_narrowphase
 ```
+
+To-Do (for a later point)
+- [ ] Also do transformations (don't just take pre transformed collision data)
+- [ ] Reduce output to 32 byte: `uint32_t a_index; uint32_t b_index; float depth; float point_a[3]; float normal[2];`
+- [ ] Add box colliders
