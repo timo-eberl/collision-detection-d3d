@@ -1,27 +1,9 @@
+#include "collision_dx.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <stdint.h>
 
-typedef struct {
-	float p_a[3];
-	float radius;
-	float p_b[3]; // Only used for capsules
-	uint32_t type; // 0 = Sphere, 1 = Capsule
-} dx_shape;
-
-typedef struct {
-	uint32_t a_index;
-	uint32_t b_index;
-	uint32_t b_type; // 0 = Static, 1 = Rigid
-	float depth;
-	float point_a[3];
-	float point_b[3];
-	float normal[3];
-	uint32_t pad[3]; // Pad to 64 bytes
-} dx_collision;
-
-// Sort by: a_index ASC, b_type ASC, b_index ASC
 int compare_collisions(const void* a, const void* b) {
 	const dx_collision* ca = (const dx_collision*)a;
 	const dx_collision* cb = (const dx_collision*)b;
@@ -48,8 +30,11 @@ int main() {
 		return 1;
 	}
 
+	dx_shared_state* sh = dx_shared_state_create();
+	dx_state_collision* state = dx_state_collision_create(sh);
+
 	uint32_t frame_index = 0;
-	uint32_t counts[3]; // [rigid_count, static_count, col_count]
+	uint32_t counts[3];
 
 	while (fread(counts, sizeof(uint32_t), 3, file) == 3) {
 		uint32_t rigid_count = counts[0];
@@ -64,12 +49,10 @@ int main() {
 		if (static_count > 0) fread(statics, sizeof(dx_shape), static_count, file);
 		if (expected_col_count > 0) fread(expected_cols, sizeof(dx_collision), expected_col_count, file);
 
-		// TODO implement the whole thing
-
 		uint32_t actual_col_count = 0;
-		dx_collision* actual_cols = nullptr;
+		dx_collision* actual_cols = dx_run_collision(
+			sh, state, rigids, rigid_count, statics, static_count, true, &actual_col_count);
 
-		// Sort both arrays to ensure random GPU output order matches the CPU order
 		if (expected_col_count > 0) {
 			qsort(expected_cols, expected_col_count, sizeof(dx_collision), compare_collisions);
 		}
@@ -77,7 +60,6 @@ int main() {
 			qsort(actual_cols, actual_col_count, sizeof(dx_collision), compare_collisions);
 		}
 
-		// Validation
 		bool passed = true;
 		if (actual_col_count != expected_col_count) {
 			fprintf(stderr, "Frame %u FAILED: Expected %u collisions, got %u\n",
@@ -114,6 +96,9 @@ int main() {
 
 		frame_index++;
 	}
+
+	dx_state_collision_destroy(state);
+	dx_shared_state_destroy(sh);
 
 	fclose(file);
 	return 0;

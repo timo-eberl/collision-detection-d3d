@@ -1,12 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
 project(collision_dx LANGUAGES C CXX)
 
-# Silence FetchContent CMP0135 warnings on CMake 3.24+
 if(POLICY CMP0135)
 	cmake_policy(SET CMP0135 NEW)
 endif()
 
-# Automatically download the DirectX Headers for Linux/WSL
 include(FetchContent)
 FetchContent_Declare(
 	DirectX-Headers
@@ -15,17 +13,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(DirectX-Headers)
 
-# Look for DXC in PATH first
 find_program(DXC_EXECUTABLE dxc)
 
 if(NOT DXC_EXECUTABLE)
-	message(STATUS "dxc not found. Downloading prebuilt Microsoft DirectXShaderCompiler binary...")
+	message(STATUS "dxc not found. Downloading prebuilt Microsoft DirectXShaderCompiler...")
 	if(WIN32)
 		set(DXC_URL "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602.24/dxc_2026_05_27.zip")
 		set(DXC_HASH "SHA256=cf658aacf070d3045e31b8f1f8a696c2945f37c1095019481ef7c513368db3b4")
 		set(DXC_BIN_RELATIVE "bin/x64/dxc.exe")
 	else()
-		# Assuming Linux/WSL x86_64
 		set(DXC_URL "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602.24/linux_dxc_2026_05_26.x86_64.tar.gz")
 		set(DXC_HASH "SHA256=928b3e9986d11dc4279050e02340950c29bcbd1e5efb9d3ded9669dade37639d")
 		set(DXC_BIN_RELATIVE "bin/dxc")
@@ -45,21 +41,22 @@ endif()
 
 message(STATUS "Using DXC: ${DXC_EXECUTABLE}")
 
-# Compile the HLSL shaders into C-header byte arrays
-# add_custom_command(
-# 	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
-# 	COMMAND ${DXC_EXECUTABLE}
-# 		-E main
-# 		-T cs_6_0
-# 		-O3
-# 		-Vn collision_shader
-# 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
-# 		${CMAKE_CURRENT_SOURCE_DIR}/collision.hlsl
-# 	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/collision.hlsl
-# )
+add_custom_command(
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
+	COMMAND ${DXC_EXECUTABLE}
+		-E main
+		-T cs_6_0
+		-O3
+		-Vn collision_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/collision.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/collision.hlsl
+)
 
-add_executable(${PROJECT_NAME} 
+add_executable(${PROJECT_NAME}
 	main.cpp
+	shared_state.cpp
+	collision_dx.cpp
 	${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
 )
 
