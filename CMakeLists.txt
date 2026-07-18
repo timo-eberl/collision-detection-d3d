@@ -90,3 +90,12 @@ else()
 		target_link_libraries(${PROJECT_NAME} PRIVATE DirectX-Headers DirectX-Guids d3d12 dxcore)
 	endif()
 endif()
+
+if(MSVC)
+	# Ensure the PIX dll is copied next to the executable
+	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${winpixeventruntime_SOURCE_DIR}/bin/x64/WinPixEventRuntime.dll"
+		$<TARGET_FILE_DIR:${PROJECT_NAME}>
+	)
+endif()
