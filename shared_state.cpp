@@ -2,9 +2,27 @@
 #include "dx_common.h"
 #include "dx_profile.h"
 
+#ifdef _MSC_VER
+	#include <pix3.h>
+#else
+	#define PIXBeginEvent(...)
+	#define PIXEndEvent(...)
+	#define PIX_COLOR(r, g, b) 0
+#endif
+
 extern "C" dx_shared_state* dx_shared_state_create(void) {
 	dx_shared_state* s = (dx_shared_state*)calloc(1, sizeof(dx_shared_state));
 	
+	// Enable the D3D12 Debug Layer so SetName() strings are broadcast to profilers (like RGP)
+	ID3D12Debug* debug_controller = nullptr;
+	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller)))) {
+		debug_controller->EnableDebugLayer();
+		debug_controller->Release();
+		fprintf(stderr, "[dx12] D3D12 Debug Layer Enabled.\n");
+	} else {
+		fprintf(stderr, "[dx12] Warning: Failed to enable D3D12 Debug Layer.\n");
+	}
+
 	IDXCoreAdapterFactory* factory = nullptr;
 	HRESULT hr = DXCoreCreateAdapterFactory(IID_PPV_ARGS(&factory));
 	if (FAILED(hr)) {
@@ -63,6 +81,7 @@ extern "C" dx_shared_state* dx_shared_state_create(void) {
 	q_desc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
 	q_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	DX_CHECK(s->device->CreateCommandQueue(&q_desc, IID_PPV_ARGS(&s->cmd_queue)));
+	s->cmd_queue->SetName(L"Physics_Compute_Queue");
 
 	DX_CHECK(s->device->CreateCommandAllocator(
 		D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(&s->cmd_allocator)));
@@ -70,6 +89,7 @@ extern "C" dx_shared_state* dx_shared_state_create(void) {
 	DX_CHECK(s->device->CreateCommandList(
 		0, D3D12_COMMAND_LIST_TYPE_COMPUTE, s->cmd_allocator, nullptr,
 		IID_PPV_ARGS(&s->cmd_list)));
+	s->cmd_list->SetName(L"Physics_Command_List");
 
 	// Setup Profiling Heaps
 	DX_CHECK(s->cmd_queue->GetTimestampFrequency(&s->timestamp_frequency));
@@ -165,7 +185,12 @@ extern "C" void dx_shared_begin_pass(dx_shared_state* sh, const dx_shape* rigids
 					 sizeof(dx_collision), D3D12_HEAP_TYPE_DEFAULT,
 					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 
+	if (sh->d_rigids) sh->d_rigids->SetName(L"Rigids_Default_Buffer");
+	if (sh->d_statics) sh->d_statics->SetName(L"Statics_Default_Buffer");
+	if (sh->d_collisions) sh->d_collisions->SetName(L"Collisions_UAV");
+
 	dx_profile_begin(prof, sh);
+	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 0, 0), "Phase: Upload Memory");
 
 	// Resources implicitly start at COMMON access allowing direct copy execution
 	sh->cmd_list->CopyBufferRegion(sh->d_rigids, 0, sh->up_rigids, 0,
@@ -175,8 +200,6 @@ extern "C" void dx_shared_begin_pass(dx_shared_state* sh, const dx_shape* rigids
 									   static_count * sizeof(dx_shape));
 	}
 	sh->cmd_list->CopyBufferRegion(sh->d_col_count, 0, sh->up_zero, 0, sizeof(uint32_t));
-
-	dx_profile_step(prof, sh, "upload");
 
 	// Global barrier to transition all buffers from the upload copy phase to compute phase.
 	// We use a global barrier because it efficiently flushes all caches for the entire queue
@@ -194,6 +217,9 @@ extern "C" void dx_shared_begin_pass(dx_shared_state* sh, const dx_shape* rigids
 	barrier_group.pGlobalBarriers = &global_barrier;
 	
 	sh->cmd_list->Barrier(1, &barrier_group);
+
+	PIXEndEvent(sh->cmd_list);
+	dx_profile_step(prof, sh, "upload");
 }
 
 extern "C" uint32_t dx_shared_execute_and_get_count(dx_shared_state* sh, uint32_t static_count,
@@ -215,7 +241,6 @@ extern "C" uint32_t dx_shared_execute_and_get_count(dx_shared_state* sh, uint32_
 
 	sh->cmd_list->CopyBufferRegion(sh->rb_col_count, 0, sh->d_col_count, 0, sizeof(uint32_t));
 
-	dx_profile_resolve(prof, sh);
 	dx_execute_and_wait(sh);
 
 	uint32_t count = 0;
@@ -234,15 +259,16 @@ extern "C" dx_collision* dx_shared_readback_collisions(dx_shared_state* sh, uint
 					 sizeof(dx_collision), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE,
 					 2.0f);
 
-	dx_profile_split(prof, sh);
+	// The interval measures the time since the "kernel" step ended ().
+	dx_profile_step(prof, sh, "cmd_gap");
 
+	PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 0, 255), "Phase: Readback");
 	// ExecuteCommandLists guarantees all caches are flushed. Buffers inherently return
 	// to COMMON access at the start of a command list, so no explicit transition is needed.
 	sh->cmd_list->CopyBufferRegion(sh->rb_collisions, 0, sh->d_collisions, 0,
 								   count * sizeof(dx_collision));
-
+	PIXEndEvent(sh->cmd_list);
 	dx_profile_step(prof, sh, "readback");
-	dx_profile_resolve(prof, sh);
 
 	dx_execute_and_wait(sh);
 

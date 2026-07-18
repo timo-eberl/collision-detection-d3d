@@ -86,7 +86,7 @@ int main() {
 		}
 
 		if (passed) {
-			printf("Frame %u PASSED.\n", frame_index);
+			printf("Frame %u PASSED: %u collisions\n", frame_index, actual_col_count);
 		}
 
 		free(rigids);

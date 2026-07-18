@@ -13,6 +13,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(DirectX-Headers)
 
+if(MSVC)
+	FetchContent_Declare(
+		WinPixEventRuntime
+		URL https://www.nuget.org/api/v2/package/WinPixEventRuntime/1.0.240308001
+	)
+	FetchContent_MakeAvailable(WinPixEventRuntime)
+endif()
+
 find_program(DXC_EXECUTABLE dxc)
 
 if(NOT DXC_EXECUTABLE)
@@ -62,6 +70,12 @@ add_executable(${PROJECT_NAME}
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
+if(MSVC)
+	target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE 
+		"${winpixeventruntime_SOURCE_DIR}/Include/WinPixEventRuntime"
+	)
+endif()
+
 if(UNIX)
 	target_link_directories(${PROJECT_NAME} PUBLIC "/usr/lib/wsl/lib")
 	find_library(D3D12_LIB d3d12 PATHS "/usr/lib/wsl/lib" REQUIRED)
@@ -69,5 +83,10 @@ if(UNIX)
 
 	target_link_libraries(${PROJECT_NAME} PRIVATE DirectX-Headers DirectX-Guids ${D3D12_LIB} ${DXCORE_LIB})
 else()
-	target_link_libraries(${PROJECT_NAME} PRIVATE DirectX-Headers DirectX-Guids d3d12 dxcore)
+	if(MSVC)
+		target_link_directories(${PROJECT_NAME} PRIVATE "${winpixeventruntime_SOURCE_DIR}/bin/x64")
+		target_link_libraries(${PROJECT_NAME} PRIVATE DirectX-Headers DirectX-Guids d3d12 dxcore WinPixEventRuntime)
+	else()
+		target_link_libraries(${PROJECT_NAME} PRIVATE DirectX-Headers DirectX-Guids d3d12 dxcore)
+	endif()
 endif()
