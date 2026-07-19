@@ -12,16 +12,6 @@
 
 extern "C" dx_shared_state* dx_shared_state_create(void) {
 	dx_shared_state* s = (dx_shared_state*)calloc(1, sizeof(dx_shared_state));
-	
-	// Enable the D3D12 Debug Layer so SetName() strings are broadcast to profilers (like RGP)
-	ID3D12Debug* debug_controller = nullptr;
-	if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug_controller)))) {
-		debug_controller->EnableDebugLayer();
-		debug_controller->Release();
-		fprintf(stderr, "[dx12] D3D12 Debug Layer Enabled.\n");
-	} else {
-		fprintf(stderr, "[dx12] Warning: Failed to enable D3D12 Debug Layer.\n");
-	}
 
 	IDXCoreAdapterFactory* factory = nullptr;
 	HRESULT hr = DXCoreCreateAdapterFactory(IID_PPV_ARGS(&factory));
