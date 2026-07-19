@@ -11,7 +11,7 @@
 int compare_collisions(const void* a, const void* b) {
 	const dx_collision* ca = (const dx_collision*)a;
 	const dx_collision* cb = (const dx_collision*)b;
-	
+
 	if (ca->a_index != cb->a_index) return (int)ca->a_index - (int)cb->a_index;
 	if (ca->b_type != cb->b_type) return (int)ca->b_type - (int)cb->b_type;
 	return (int)ca->b_index - (int)cb->b_index;
@@ -27,7 +27,6 @@ bool vec3_eq_approx(const float* a, const float* b, float epsilon = 0.001f) {
 	       float_eq_approx(a[2], b[2], epsilon);
 }
 
-#include <windows.h>
 int main() {
 
 	// Fix emojis on some Windows terminals
