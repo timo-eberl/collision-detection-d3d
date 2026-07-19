@@ -1,6 +1,7 @@
 .vscode/
 .vs/
 CMakeSettings.json
+out/
 build/
 build_release/
 build_debug/
