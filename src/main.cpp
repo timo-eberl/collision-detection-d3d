@@ -4,6 +4,10 @@
 #include <math.h>
 #include <stdint.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 int compare_collisions(const void* a, const void* b) {
 	const dx_collision* ca = (const dx_collision*)a;
 	const dx_collision* cb = (const dx_collision*)b;
@@ -23,7 +27,14 @@ bool vec3_eq_approx(const float* a, const float* b, float epsilon = 0.001f) {
 	       float_eq_approx(a[2], b[2], epsilon);
 }
 
+#include <windows.h>
 int main() {
+
+	// Fix emojis on some Windows terminals
+#ifdef _WIN32
+	SetConsoleOutputCP(CP_UTF8);
+#endif
+
 	FILE* file = fopen("collision_test_data.bin", "rb");
 	if (!file) {
 		fprintf(stderr, "Failed to open collision_test_data.bin\n");
@@ -62,7 +73,7 @@ int main() {
 
 		bool passed = true;
 		if (actual_col_count != expected_col_count) {
-			fprintf(stderr, "Frame %u FAILED: Expected %u collisions, got %u\n",
+			fprintf(stderr, "❌ Frame %u FAILED: Expected %u collisions, got %u\n",
 					frame_index, expected_col_count, actual_col_count);
 			passed = false;
 		} else {
@@ -71,14 +82,14 @@ int main() {
 				dx_collision* act = &actual_cols[i];
 
 				if (exp->a_index != act->a_index || exp->b_index != act->b_index || exp->b_type != act->b_type) {
-					fprintf(stderr, "Frame %u FAILED: Pair mismatch at sorted index %u\n", frame_index, i);
+					fprintf(stderr, "❌ Frame %u FAILED: Pair mismatch at sorted index %u\n", frame_index, i);
 					passed = false; break;
 				}
 
 				if (!float_eq_approx(exp->depth, act->depth) ||
 					!vec3_eq_approx(exp->normal, act->normal) ||
 					!vec3_eq_approx(exp->point_a, act->point_a)) {
-					fprintf(stderr, "Frame %u FAILED: Math mismatch for pair (%u, %u type %u)\n",
+					fprintf(stderr, "❌ Frame %u FAILED: Math mismatch for pair (%u, %u type %u)\n",
 							frame_index, exp->a_index, exp->b_index, exp->b_type);
 					passed = false; break;
 				}
@@ -86,8 +97,12 @@ int main() {
 		}
 
 		if (passed) {
-			printf("Frame %u PASSED: %u collisions\n", frame_index, actual_col_count);
+			printf("✅ Frame %u PASSED: %u collisions\n", frame_index, actual_col_count);
 		}
+
+		// Flush, so stdout and stderr messages are printed in order (OS dependent)
+		fflush(stdout);
+		fflush(stderr);
 
 		free(rigids);
 		free(statics);
