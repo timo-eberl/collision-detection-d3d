@@ -183,28 +183,75 @@ static inline void dx_execute_and_wait(dx_shared_state* sh) {
 	DX_CHECK(sh->cmd_list->Reset(sh->cmd_allocator, nullptr));
 }
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 // Allocates/resizes all necessary D3D12 buffers (Upload, Default, and Readback) based on capacities
-void dx_shared_ensure_buffers(dx_shared_state* sh, uint32_t rigid_count, uint32_t static_count,
-							  size_t max_collisions);
+static void dx_shared_ensure_buffers(dx_shared_state* sh, uint32_t rigid_count,
+										 uint32_t static_count, size_t max_collisions) {
+	ensure_dx_buffer(sh->device, &sh->up_rigids, &sh->up_rigids_size, rigid_count, sizeof(dx_shape),
+					 D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, 1.0f);
+	ensure_dx_buffer(sh->device, &sh->d_rigids, &sh->d_rigids_size, rigid_count, sizeof(dx_shape),
+					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, 1.0f);
+
+	if (static_count > 0) {
+		ensure_dx_buffer(sh->device, &sh->up_statics, &sh->up_statics_size, static_count,
+						 sizeof(dx_shape), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, 1.0f);
+		ensure_dx_buffer(sh->device, &sh->d_statics, &sh->d_statics_size, static_count,
+						 sizeof(dx_shape), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, 1.0f);
+	}
+
+	ensure_dx_buffer(sh->device, &sh->d_col_count, &sh->d_col_count_size, 1, sizeof(uint32_t),
+					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
+	ensure_dx_buffer(sh->device, &sh->rb_col_count, &sh->rb_col_count_size, 1, sizeof(uint32_t),
+					 D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, 1.0f);
+
+	ensure_dx_buffer(sh->device, &sh->d_collisions, &sh->d_collisions_size, max_collisions,
+					 sizeof(dx_collision), D3D12_HEAP_TYPE_DEFAULT,
+					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
+	// Allocate the readback buffer for the same capacity upfront. Could be done later with only the
+	// actually required size, but who cares about memory anymore, right?
+	ensure_dx_buffer(sh->device, &sh->rb_collisions, &sh->rb_collisions_size, max_collisions,
+					 sizeof(dx_collision), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE,1.0f);
+
+	if (sh->d_rigids) sh->d_rigids->SetName(L"Rigids_Default_Buffer");
+	if (sh->d_statics) sh->d_statics->SetName(L"Statics_Default_Buffer");
+	if (sh->d_collisions) sh->d_collisions->SetName(L"Collisions_UAV");
+}
 
 // Maps the upload buffers and copies the host shape data into them.
 // Takes only the specific resources it operates on.
-void dx_shared_write_inputs(ID3D12Resource* up_rigids, const dx_shape* rigids, uint32_t rigid_count,
-							ID3D12Resource* up_statics, const dx_shape* statics,
-							uint32_t static_count, bool statics_changed);
+static void dx_shared_write_inputs(ID3D12Resource* up_rigids, const dx_shape* rigids,
+									   uint32_t rigid_count, ID3D12Resource* up_statics,
+									   const dx_shape* statics, uint32_t static_count,
+									   bool statics_changed) {
+	void* mapped = nullptr;
+	up_rigids->Map(0, nullptr, &mapped);
+	memcpy(mapped, rigids, rigid_count * sizeof(dx_shape));
+	up_rigids->Unmap(0, nullptr);
+
+	if (statics_changed && static_count > 0) {
+		up_statics->Map(0, nullptr, &mapped);
+		memcpy(mapped, statics, static_count * sizeof(dx_shape));
+		up_statics->Unmap(0, nullptr);
+	}
+}
 
 // Maps the readback buffer and extracts the final collision count.
-uint32_t dx_shared_read_count(ID3D12Resource* rb_col_count);
+static uint32_t dx_shared_read_count(ID3D12Resource* rb_col_count) {
+	uint32_t count = 0;
+	void* mapped = nullptr;
+	rb_col_count->Map(0, nullptr, &mapped);
+	count = *(uint32_t*)mapped;
+	rb_col_count->Unmap(0, nullptr);
+	return count;
+}
 
 // Maps the readback buffer, allocates a host array, and copies the final collision structs.
-dx_collision* dx_shared_read_collisions(ID3D12Resource* rb_collisions, uint32_t count);
-
-#ifdef __cplusplus
+static dx_collision* dx_shared_read_collisions(ID3D12Resource* rb_collisions, uint32_t count) {
+	dx_collision* h_cols = (dx_collision*)malloc(count * sizeof(dx_collision));
+	void* mapped = nullptr;
+	rb_collisions->Map(0, nullptr, &mapped);
+	memcpy(h_cols, mapped, count * sizeof(dx_collision));
+	rb_collisions->Unmap(0, nullptr);
+	return h_cols;
 }
-#endif
 
 #endif
