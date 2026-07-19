@@ -49,6 +49,7 @@ endif()
 
 message(STATUS "Using DXC: ${DXC_EXECUTABLE}")
 
+# Compile shader
 add_custom_command(
 	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
 	COMMAND ${DXC_EXECUTABLE}
@@ -57,18 +58,21 @@ add_custom_command(
 		-O3
 		-Vn collision_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
-		${CMAKE_CURRENT_SOURCE_DIR}/collision.hlsl
-	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/collision.hlsl
+		${CMAKE_CURRENT_SOURCE_DIR}/src/collision.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/collision.hlsl
 )
 
-add_executable(${PROJECT_NAME}
-	main.cpp
-	shared_state.cpp
-	collision_dx.cpp
+# Library
+add_library(${PROJECT_NAME}
+	src/shared_state.cpp
+	src/collision_dx.cpp
 	${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
 )
 
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(${PROJECT_NAME}
+	PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include # public API
+	PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
+)
 
 if(MSVC)
 	target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE 
@@ -76,6 +80,7 @@ if(MSVC)
 	)
 endif()
 
+# Link D3D/DXCore/PIX to the library
 if(UNIX)
 	target_link_directories(${PROJECT_NAME} PUBLIC "/usr/lib/wsl/lib")
 	find_library(D3D12_LIB d3d12 PATHS "/usr/lib/wsl/lib" REQUIRED)
@@ -91,11 +96,15 @@ else()
 	endif()
 endif()
 
+# Build executable
+add_executable(${PROJECT_NAME}_app src/main.cpp)
+target_link_libraries(${PROJECT_NAME}_app PRIVATE ${PROJECT_NAME})
+
 if(MSVC)
 	# Ensure the PIX dll is copied next to the executable
-	add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+	add_custom_command(TARGET ${PROJECT_NAME}_app POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		"${winpixeventruntime_SOURCE_DIR}/bin/x64/WinPixEventRuntime.dll"
-		$<TARGET_FILE_DIR:${PROJECT_NAME}>
+		$<TARGET_FILE_DIR:${PROJECT_NAME}_app>
 	)
 endif()
