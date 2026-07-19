@@ -6,6 +6,8 @@
 #include <float.h>
 #include <string.h>
 
+#ifdef CDDX_ENABLE_PROFILER
+
 #define DX_PROFILE_MAX_STEPS 16
 
 typedef struct {
@@ -135,5 +137,19 @@ static inline void dx_profile_log(const dx_profile* p, dx_profile_acc* a, const 
 	fprintf(stderr, " total=%.3fms cpu_total=%.3fms [%.3f-%.3f]\n",
 			total, cpu_avg, a->cpu_total_min, a->cpu_total_max);
 }
+
+#else
+
+typedef struct { int _dummy; } dx_profile;
+typedef struct { int _dummy; } dx_profile_acc;
+
+static inline void dx_profile_acc_init(dx_profile_acc*) {}
+static inline void dx_profile_begin(dx_profile*, dx_shared_state*) {}
+static inline void dx_profile_step(dx_profile*, dx_shared_state*, const char*) {}
+static inline void dx_profile_end(dx_profile*, dx_shared_state*) {}
+static inline void dx_profile_log_frame(const dx_profile*, const char*) {}
+static inline void dx_profile_log(const dx_profile*, dx_profile_acc*, const char*, int) {}
+
+#endif // CDDX_ENABLE_PROFILER
 
 #endif

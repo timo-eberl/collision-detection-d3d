@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
 project(collision_dx LANGUAGES C CXX)
 
+option(CDDX_ENABLE_PROFILER "Print profiling messages to stderr" ON)
+
 if(POLICY CMP0135)
 	cmake_policy(SET CMP0135 NEW)
 endif()
@@ -75,7 +77,7 @@ target_include_directories(${PROJECT_NAME}
 )
 
 if(MSVC)
-	target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE 
+	target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
 		"${winpixeventruntime_SOURCE_DIR}/Include/WinPixEventRuntime"
 	)
 endif()
@@ -94,6 +96,10 @@ else()
 	else()
 		target_link_libraries(${PROJECT_NAME} PRIVATE DirectX-Headers DirectX-Guids d3d12 dxcore)
 	endif()
+endif()
+
+if(CDDX_ENABLE_PROFILER)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC CDDX_ENABLE_PROFILER)
 endif()
 
 # Build executable
