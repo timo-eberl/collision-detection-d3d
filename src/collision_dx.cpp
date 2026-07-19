@@ -1,7 +1,7 @@
 #include "collision_dx.h"
 #include "collision_shader.h"
-#include "dx_common.h"
 #include "dx_profile.h"
+#include "dx_shared.h"
 
 #ifdef _MSC_VER
 	#include <pix3.h>
@@ -62,7 +62,7 @@ extern "C" dx_state_collision* dx_state_collision_create(dx_shared_state* sh) {
 	ID3DBlob* error = nullptr;
 	HRESULT hr = D3D12SerializeRootSignature(
 		&rs_desc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
-		
+
 	if (FAILED(hr)) {
 		if (error) {
 			fprintf(stderr, "[dx12] Root Signature Error: %s\n", (char*)error->GetBufferPointer());
@@ -114,46 +114,114 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 	dx_profile prof = {0};
 
 	for (int attempt = 0; attempt < 2; ++attempt) {
-		dx_shared_begin_pass(sh, rigids, rigid_count, statics, static_count, statics_changed,
-							 cols_needed, &prof);
+		// Only profile first attempt to not confuse the profiler
+		bool enable_profiling = (attempt > 0) ? false : true;
+		dx_shared_ensure_buffers(sh, rigid_count, static_count, cols_needed);
+		dx_shared_write_inputs(sh->up_rigids, rigids, rigid_count,
+							   sh->up_statics, statics, static_count, statics_changed);
 
 		// Compute the maximum capacity using the actual allocated size of the pairs buffer
 		uint32_t kernel_max = (sh->d_collisions_size > (size_t)UINT32_MAX)
 								  ? UINT32_MAX : (uint32_t)sh->d_collisions_size;
 
+		if (enable_profiling) dx_profile_begin(&prof, sh);
+		PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 0, 0), "Phase: Upload Memory");
+
+		sh->cmd_list->CopyBufferRegion(sh->d_rigids, 0, sh->up_rigids, 0,
+									   rigid_count * sizeof(dx_shape));
+		if (statics_changed && static_count > 0) {
+			sh->cmd_list->CopyBufferRegion(sh->d_statics, 0, sh->up_statics, 0,
+										   static_count * sizeof(dx_shape));
+		}
+		sh->cmd_list->CopyBufferRegion(sh->d_col_count, 0, sh->up_zero, 0, sizeof(uint32_t));
+
+		// Transition inputs to SRV and outputs to UAV
+		D3D12_GLOBAL_BARRIER gb_upload = {};
+		gb_upload.SyncBefore = D3D12_BARRIER_SYNC_COPY;
+		gb_upload.SyncAfter = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+		gb_upload.AccessBefore = D3D12_BARRIER_ACCESS_COPY_DEST;
+		gb_upload.AccessAfter = D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
+								D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+
+		D3D12_BARRIER_GROUP bg_upload = {};
+		bg_upload.Type = D3D12_BARRIER_TYPE_GLOBAL;
+		bg_upload.NumBarriers = 1;
+		bg_upload.pGlobalBarriers = &gb_upload;
+
+		sh->cmd_list->Barrier(1, &bg_upload);
+
+		PIXEndEvent(sh->cmd_list);
+		if (enable_profiling) dx_profile_step(&prof, sh, "upload");
+
 		sh->cmd_list->SetComputeRootSignature(state->root_sig);
 		sh->cmd_list->SetPipelineState(state->pso);
-		
+
 		uint32_t constants[3] = { rigid_count, static_count, kernel_max };
 		sh->cmd_list->SetComputeRoot32BitConstants(0, 3, constants, 0);
 		sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress());
 		if (static_count > 0) {
-			sh->cmd_list->SetComputeRootShaderResourceView(2,sh->d_statics->GetGPUVirtualAddress());
+			sh->cmd_list->SetComputeRootShaderResourceView(
+				2, sh->d_statics->GetGPUVirtualAddress());
 		} else {
 			// Bind dummy SRV to prevent driver complaints if static_count == 0
-			sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress());
+			sh->cmd_list->SetComputeRootShaderResourceView(
+				2, sh->d_rigids->GetGPUVirtualAddress());
 		}
 
-		sh->cmd_list->SetComputeRootUnorderedAccessView(3,sh->d_collisions->GetGPUVirtualAddress());
-		sh->cmd_list->SetComputeRootUnorderedAccessView(4, sh->d_col_count->GetGPUVirtualAddress());
+		sh->cmd_list->SetComputeRootUnorderedAccessView(
+			3, sh->d_collisions->GetGPUVirtualAddress());
+		sh->cmd_list->SetComputeRootUnorderedAccessView(
+			4, sh->d_col_count->GetGPUVirtualAddress());
 
 		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Compute Dispatch");
 		sh->cmd_list->Dispatch(grid_size, 1, 1);
 		PIXEndEvent(sh->cmd_list);
-		dx_profile_step(&prof, sh, "kernel");
+		if (enable_profiling) dx_profile_step(&prof, sh, "kernel");
 
-		count = dx_shared_execute_and_get_count(sh, static_count, &prof);
+		// Transition the counter UAV to Copy Source to read it back
+		D3D12_GLOBAL_BARRIER gb_count = {};
+		gb_count.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+		gb_count.SyncAfter = D3D12_BARRIER_SYNC_COPY;
+		gb_count.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+		gb_count.AccessAfter = D3D12_BARRIER_ACCESS_COPY_SOURCE;
+
+		D3D12_BARRIER_GROUP bg_count = {};
+		bg_count.Type = D3D12_BARRIER_TYPE_GLOBAL;
+		bg_count.NumBarriers = 1;
+		bg_count.pGlobalBarriers = &gb_count;
+
+		sh->cmd_list->Barrier(1, &bg_count);
+
+		sh->cmd_list->CopyBufferRegion(sh->rb_col_count, 0, sh->d_col_count, 0, sizeof(uint32_t));
+
+		dx_execute_and_wait(sh);
+
+		count = dx_shared_read_count(sh->rb_col_count);
 
 		if (count <= kernel_max) break;
 
 		cols_needed = count;
-		fprintf(stderr, "[dx12] Info: Capacity exceeded (%u > %u). Re-running with the exact required capacity.\n", count, kernel_max);
+		fprintf(stderr, "[dx12] WARNING: Capacity exceeded (%u > %u). "
+						"Re-running with the exact required capacity.\n", count, kernel_max);
 	}
 
 	dx_collision* h_cols = nullptr;
 	if (count > 0) {
+		dx_profile_step(&prof, sh, "cmd_gap");
+		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 0, 255), "Phase: Readback");
+
+		// The command list was reset in dx_execute_and_wait, meaning buffers have implicitly
+		// decayed to COMMON access. CopyBufferRegion will implicitly promote it to COPY_SOURCE.
 		// Success -> Readback the actual collision pairs
-		h_cols = dx_shared_readback_collisions(sh, count, &prof);
+		sh->cmd_list->CopyBufferRegion(sh->rb_collisions, 0, sh->d_collisions, 0,
+									   count * sizeof(dx_collision));
+
+		PIXEndEvent(sh->cmd_list);
+		dx_profile_step(&prof, sh, "readback");
+
+		dx_execute_and_wait(sh);
+
+		h_cols = dx_shared_read_collisions(sh->rb_collisions, count);
 		*out_count = count;
 	}
 

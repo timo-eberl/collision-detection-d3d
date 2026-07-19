@@ -1,7 +1,7 @@
 #ifndef DX_PROFILE_H
 #define DX_PROFILE_H
 
-#include "dx_common.h"
+#include "dx_shared.h"
 #include <chrono>
 #include <float.h>
 #include <string.h>
