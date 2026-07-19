@@ -1,5 +1,5 @@
-#include "collision_dx.h"
-#include "dx_shared.h"
+#include "collision_detection_d3d.h"
+#include "shared.h"
 
 extern "C" dx_shared_state* dx_shared_state_create(void) {
 	dx_shared_state* s = (dx_shared_state*)calloc(1, sizeof(dx_shared_state));

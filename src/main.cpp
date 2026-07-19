@@ -1,4 +1,4 @@
-#include "collision_dx.h"
+#include "collision_detection_d3d.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>

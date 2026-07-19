@@ -53,22 +53,22 @@ message(STATUS "Using DXC: ${DXC_EXECUTABLE}")
 
 # Compile shader
 add_custom_command(
-	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_shader.h
 	COMMAND ${DXC_EXECUTABLE}
 		-E main
 		-T cs_6_0
 		-O3
-		-Vn collision_shader
-		-Fh ${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
-		${CMAKE_CURRENT_SOURCE_DIR}/src/collision.hlsl
-	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/collision.hlsl
+		-Vn algo_simple_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple.hlsl
 )
 
 # Library
 add_library(${PROJECT_NAME}
 	src/shared_state.cpp
-	src/collision_dx.cpp
-	${CMAKE_CURRENT_BINARY_DIR}/collision_shader.h
+	src/algo_simple.cpp
+	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_shader.h
 )
 
 target_include_directories(${PROJECT_NAME}
