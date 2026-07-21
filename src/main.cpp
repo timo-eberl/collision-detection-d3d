@@ -129,7 +129,7 @@ int main() {
 				i++; j++;
 			} else if (cmp < 0) {
 				// Expected pair is missing from Actual (GPU missed it)
-				if (exp->depth < 0.001f) {
+				if (exp->depth < 0.00001f) {
 					i++;
 				} else {
 					fprintf(stderr, "❌ Frame %u FAILED: Missing expected pair (%u, %u type %u) "
@@ -139,7 +139,7 @@ int main() {
 				}
 			} else {
 				// Actual pair is extra (GPU found an extra one)
-				if (act->depth < 0.001f) {
+				if (act->depth < 0.00001f) {
 					j++;
 				} else {
 					fprintf(stderr, "❌ Frame %u FAILED: Extra GPU pair (%u, %u type %u) "
