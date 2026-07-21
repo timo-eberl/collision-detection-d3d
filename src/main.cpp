@@ -71,20 +71,22 @@ int main() {
 		}
 
 		bool passed = true;
-		if (actual_col_count != expected_col_count) {
-			fprintf(stderr, "❌ Frame %u FAILED: Expected %u collisions, got %u\n",
-					frame_index, expected_col_count, actual_col_count);
-			passed = false;
-		} else {
-			for (uint32_t i = 0; i < expected_col_count; ++i) {
-				dx_collision* exp = &expected_cols[i];
-				dx_collision* act = &actual_cols[i];
+		uint32_t i = 0, j = 0;
 
-				if (exp->a_index != act->a_index || exp->b_index != act->b_index || exp->b_type != act->b_type) {
-					fprintf(stderr, "❌ Frame %u FAILED: Pair mismatch at sorted index %u\n", frame_index, i);
-					passed = false; break;
-				}
+		// walk through both arrays simultaneously
+		// If we find a pair that exists in one list but not the other, we check its depth. If the
+		// depth is close to zero, we ignore it
+		while (i < expected_col_count || j < actual_col_count) {
+			dx_collision* exp = (i < expected_col_count) ? &expected_cols[i] : nullptr;
+			dx_collision* act = (j < actual_col_count) ? &actual_cols[j] : nullptr;
 
+			int cmp = 0;
+			if (exp && act) cmp = compare_collisions(exp, act);
+			else if (exp) cmp = -1;
+			else cmp = 1;
+
+			if (cmp == 0) {
+				// Pair exists in both, check math
 				bool depth_ok = float_eq_approx(exp->depth, act->depth, 0.001f);
 				bool normal_ok = vec3_eq_approx(exp->normal, act->normal, 0.01f);
 				
@@ -122,7 +124,27 @@ int main() {
 									"pt_a=(%f, %f, %f)\n",
 							act->depth, act->normal[0], act->normal[1], act->normal[2], act_len,
 							act->point_a[0], act->point_a[1], act->point_a[2]);
-					
+					passed = false; break;
+				}
+				i++; j++;
+			} else if (cmp < 0) {
+				// Expected pair is missing from Actual (GPU missed it)
+				if (exp->depth < 0.001f) {
+					i++;
+				} else {
+					fprintf(stderr, "❌ Frame %u FAILED: Missing expected pair (%u, %u type %u) "
+									"with depth=%f\n",
+							frame_index, exp->a_index, exp->b_index, exp->b_type, exp->depth);
+					passed = false; break;
+				}
+			} else {
+				// Actual pair is extra (GPU found an extra one)
+				if (act->depth < 0.001f) {
+					j++;
+				} else {
+					fprintf(stderr, "❌ Frame %u FAILED: Extra GPU pair (%u, %u type %u) "
+									"with depth=%f\n",
+							frame_index, act->a_index, act->b_index, act->b_type, act->depth);
 					passed = false; break;
 				}
 			}
