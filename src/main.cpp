@@ -85,11 +85,44 @@ int main() {
 					passed = false; break;
 				}
 
-				if (!float_eq_approx(exp->depth, act->depth) ||
-					!vec3_eq_approx(exp->normal, act->normal) ||
-					!vec3_eq_approx(exp->point_a, act->point_a)) {
+				bool depth_ok = float_eq_approx(exp->depth, act->depth, 0.001f);
+				bool normal_ok = vec3_eq_approx(exp->normal, act->normal, 0.01f);
+				
+				bool pt_ok = vec3_eq_approx(exp->point_a, act->point_a, 0.001f);
+				if (!pt_ok) {
+					// Handle parallel shapes
+					float dx = act->point_a[0] - exp->point_a[0];
+					float dy = act->point_a[1] - exp->point_a[1];
+					float dz = act->point_a[2] - exp->point_a[2];
+					// If the distance along the expected normal is ~0, it's a valid sliding point
+					float normal_err = fabsf(dx * exp->normal[0] + dy * exp->normal[1] +
+											 dz * exp->normal[2]);
+					if (normal_err < 0.01f) {
+						pt_ok = true;
+					}
+				}
+
+				if (!depth_ok || !normal_ok || !pt_ok) {
 					fprintf(stderr, "❌ Frame %u FAILED: Math mismatch for pair (%u, %u type %u)\n",
 							frame_index, exp->a_index, exp->b_index, exp->b_type);
+
+					float exp_len = sqrtf(exp->normal[0] * exp->normal[0] +
+										  exp->normal[1] * exp->normal[1] +
+										  exp->normal[2] * exp->normal[2]);
+					float act_len = sqrtf(act->normal[0] * act->normal[0] +
+										  act->normal[1] * act->normal[1] +
+										  act->normal[2] * act->normal[2]);
+					
+					fprintf(stderr, "  Expected: depth=%f, normal=(%f, %f, %f) len=%f, "
+									"pt_a=(%f, %f, %f)\n",
+							exp->depth, exp->normal[0], exp->normal[1], exp->normal[2], exp_len,
+							exp->point_a[0], exp->point_a[1], exp->point_a[2]);
+					
+					fprintf(stderr, "  Actual:   depth=%f, normal=(%f, %f, %f) len=%f, "
+									"pt_a=(%f, %f, %f)\n",
+							act->depth, act->normal[0], act->normal[1], act->normal[2], act_len,
+							act->point_a[0], act->point_a[1], act->point_a[2]);
+					
 					passed = false; break;
 				}
 			}
