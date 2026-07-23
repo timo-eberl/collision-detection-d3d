@@ -53,13 +53,20 @@ message(STATUS "Using DXC: ${DXC_EXECUTABLE}")
 
 # Compile shader
 add_custom_command(
-	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_shader.h
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_broad_shader.h ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_narrow_shader.h
 	COMMAND ${DXC_EXECUTABLE}
-		-E main
+		-E cs_broad_phase
 		-T cs_6_0
 		-O3
-		-Vn algo_simple_shader
-		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_shader.h
+		-Vn algo_simple_broad_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_broad_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_narrow_phase
+		-T cs_6_0
+		-O3
+		-Vn algo_simple_narrow_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_narrow_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple.hlsl
 	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple.hlsl
 )
@@ -68,7 +75,8 @@ add_custom_command(
 add_library(${PROJECT_NAME}
 	src/shared_state.cpp
 	src/algo_simple.cpp
-	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_broad_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_narrow_shader.h
 )
 
 target_include_directories(${PROJECT_NAME}

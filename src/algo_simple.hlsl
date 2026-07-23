@@ -5,6 +5,13 @@ struct dx_shape {
 	uint type;
 };
 
+struct dx_potential_pair {
+	uint a_index;
+	uint b_index;
+	uint b_type;
+	uint pad;
+};
+
 struct dx_collision {
 	uint a_index;
 	uint b_index;
@@ -20,13 +27,18 @@ cbuffer Constants : register(b0) {
 	uint rigid_count;
 	uint static_count;
 	uint max_collisions;
+	uint pair_count; // Number of items in the potential pairs list
 };
 
 StructuredBuffer<dx_shape> rigids : register(t0);
 StructuredBuffer<dx_shape> statics : register(t1);
+StructuredBuffer<dx_potential_pair> potential_pairs_srv : register(t2);
 
-RWStructuredBuffer<dx_collision> collisions : register(u0);
-RWStructuredBuffer<uint> col_count : register(u1);
+RWStructuredBuffer<dx_potential_pair> potential_pairs_uav : register(u0);
+RWStructuredBuffer<uint> pair_count_uav : register(u1);
+
+RWStructuredBuffer<dx_collision> collisions : register(u2);
+RWStructuredBuffer<uint> col_count_uav : register(u3);
 
 struct aabb {
 	float3 min_p;
@@ -220,7 +232,7 @@ bool evaluate_narrow_phase(dx_shape a, dx_shape b, out dx_collision result) {
 }
 
 [numthreads(256, 1, 1)]
-void main(uint3 DTid : SV_DispatchThreadID) {
+void cs_broad_phase(uint3 DTid : SV_DispatchThreadID) {
 	uint i = DTid.x;
 	if (i >= rigid_count) return;
 
@@ -230,16 +242,15 @@ void main(uint3 DTid : SV_DispatchThreadID) {
 	for (uint j = i + 1; j < rigid_count; ++j) {
 		dx_shape shape_j = rigids[j];
 		if (aabb_overlap(box_i, compute_aabb(shape_j))) {
-			dx_collision c;
-			if (evaluate_narrow_phase(shape_i, shape_j, c)) {
-				uint idx;
-				InterlockedAdd(col_count[0], 1, idx);
-				if (idx < max_collisions) {
-					c.a_index = i;
-					c.b_index = j;
-					c.b_type = 1;
-					collisions[idx] = c;
-				}
+			uint idx;
+			InterlockedAdd(pair_count_uav[0], 1, idx);
+			if (idx < max_collisions) {
+				dx_potential_pair p;
+				p.a_index = i;
+				p.b_index = j;
+				p.b_type = 1;
+				p.pad = 0;
+				potential_pairs_uav[idx] = p;
 			}
 		}
 	}
@@ -247,17 +258,44 @@ void main(uint3 DTid : SV_DispatchThreadID) {
 	for (uint k = 0; k < static_count; ++k) {
 		dx_shape shape_k = statics[k];
 		if (aabb_overlap(box_i, compute_aabb(shape_k))) {
-			dx_collision c;
-			if (evaluate_narrow_phase(shape_i, shape_k, c)) {
-				uint idx;
-				InterlockedAdd(col_count[0], 1, idx);
-				if (idx < max_collisions) {
-					c.a_index = i;
-					c.b_index = k;
-					c.b_type = 0;
-					collisions[idx] = c;
-				}
+			uint idx;
+			InterlockedAdd(pair_count_uav[0], 1, idx);
+			if (idx < max_collisions) {
+				dx_potential_pair p;
+				p.a_index = i;
+				p.b_index = k;
+				p.b_type = 0;
+				p.pad = 0;
+				potential_pairs_uav[idx] = p;
 			}
+		}
+	}
+}
+
+[numthreads(256, 1, 1)]
+void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
+	uint i = DTid.x;
+	if (i >= pair_count) return;
+
+	dx_potential_pair p = potential_pairs_srv[i];
+	
+	dx_shape shape_a = rigids[p.a_index];
+	dx_shape shape_b;
+	if (p.b_type == 1) {
+		shape_b = rigids[p.b_index];
+	} else {
+		shape_b = statics[p.b_index];
+	}
+
+	dx_collision c;
+	if (evaluate_narrow_phase(shape_a, shape_b, c)) {
+		uint idx;
+		InterlockedAdd(col_count_uav[0], 1, idx);
+		if (idx < max_collisions) {
+			c.a_index = p.a_index;
+			c.b_index = p.b_index;
+			c.b_type = p.b_type;
+			collisions[idx] = c;
 		}
 	}
 }
