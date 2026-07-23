@@ -1,4 +1,4 @@
-Benchmarks use 100.000 bodies simulated over 200 frames.
+Benchmarks use 100.000 bodies simulated over 200 frames on an AMD Radeon RX 9070 XT.
 
 ## f9d5b82bb37db6090fa083596382dcc3875d7714 (Simple Single Pass)
 
