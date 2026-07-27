@@ -140,8 +140,8 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 	if (rigid_count == 0) return nullptr;
 
 	size_t cols_needed = sh->d_collisions_size;
-	if (cols_needed < 8 * ((size_t)rigid_count + static_count)) {
-		cols_needed = 8 * ((size_t)rigid_count + static_count);
+	if (cols_needed < 16 * ((size_t)rigid_count + static_count)) {
+		cols_needed = 16 * ((size_t)rigid_count + static_count);
 	}
 	if (cols_needed < 1024) cols_needed = 1024;
 
