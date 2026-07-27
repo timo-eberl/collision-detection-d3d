@@ -487,8 +487,8 @@ bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_s
 	result = (dx_collision)0;
 
 	float3 up_a = rotate_vector(float3(0.0f, 1.0f, 0.0f), e_a.rotation);
-	float3 world_a = e_a.position - up_a * s_a.data.x; // Corrected to -
-	float3 world_b = e_a.position + up_a * s_a.data.x; // Corrected to +
+	float3 world_a = e_a.position - up_a * s_a.data.x; 
+	float3 world_b = e_a.position + up_a * s_a.data.x; 
 
 	float3 A = world_to_local(world_a, e_b.position, e_b.rotation);
 	float3 B = world_to_local(world_b, e_b.position, e_b.rotation);
@@ -498,83 +498,94 @@ bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_s
 	float3 ext = s_b.data.xyz;
 	float3 exp_ext = ext + r;
 
-	// Vectorized Ray-AABB intersection for the shallow penetration distance query.
-	// We use a sign-preserving epsilon to avoid NaN generation on exact parallel zero-divisions.
-	float3 abs_D = abs(D);
-	float3 D_safe;
-	D_safe.x = abs_D.x < 0.00001f ? (D.x >= 0.0f ? 0.00001f : -0.00001f) : D.x;
-	D_safe.y = abs_D.y < 0.00001f ? (D.y >= 0.0f ? 0.00001f : -0.00001f) : D.y;
-	D_safe.z = abs_D.z < 0.00001f ? (D.z >= 0.0f ? 0.00001f : -0.00001f) : D.z;
+	float t_min_ray = 0.0f;
+	float t_max_ray = 1.0f;
+	
+	float E_arr[3] = {exp_ext.x, exp_ext.y, exp_ext.z};
+	float A_arr[3] = {A.x, A.y, A.z};
+	float D_arr[3] = {D.x, D.y, D.z};
 
-	float3 invD = 1.0f / D_safe;
-	float3 t0 = (-exp_ext - A) * invD;
-	float3 t1 = ( exp_ext - A) * invD;
-
-	float3 t_min3 = min(t0, t1);
-	float3 t_max3 = max(t0, t1);
-
-	float t_min_ray = max(max(t_min3.x, t_min3.y), t_min3.z);
-	float t_max_ray = min(min(t_max3.x, t_max3.y), t_max3.z);
-
-	if (t_max_ray < t_min_ray || t_max_ray < 0.0f || t_min_ray > 1.0f) return false;
-
-	float t_hit = clamp(t_min_ray, 0.0f, 1.0f);
-	float3 P_entry = A + D * t_hit;
-
-	bool out_x = abs(P_entry.x) > ext.x;
-	bool out_y = abs(P_entry.y) > ext.y;
-	bool out_z = abs(P_entry.z) > ext.z;
-	int outside_count = (out_x ? 1 : 0) + (out_y ? 1 : 0) + (out_z ? 1 : 0);
-
-	float3 P_seg = float3(0.0f, 0.0f, 0.0f);
-	float3 Q_box = float3(0.0f, 0.0f, 0.0f);
-
-	if (outside_count == 1) {
-		if (out_x) {
-			P_seg = (P_entry.x > 0.0f) ? ((A.x < B.x) ? A : B) : ((A.x > B.x) ? A : B);
-		} else if (out_y) {
-			P_seg = (P_entry.y > 0.0f) ? ((A.y < B.y) ? A : B) : ((A.y > B.y) ? A : B);
+	[unroll]
+	for (int i = 0; i < 3; i++) {
+		if (abs(D_arr[i]) < 0.00001f) {
+			if (A_arr[i] < -E_arr[i] || A_arr[i] > E_arr[i]) return false;
 		} else {
-			P_seg = (P_entry.z > 0.0f) ? ((A.z < B.z) ? A : B) : ((A.z > B.z) ? A : B);
+			float invD = 1.0f / D_arr[i];
+			float t0 = (-E_arr[i] - A_arr[i]) * invD;
+			float t1 = ( E_arr[i] - A_arr[i]) * invD;
+			if (invD < 0.0f) { float tmp = t0; t0 = t1; t1 = tmp; }
+			if (t0 > t_min_ray) t_min_ray = t0;
+			if (t1 < t_max_ray) t_max_ray = t1;
+			if (t_max_ray < t_min_ray) return false;
 		}
-		Q_box = clamp(P_seg, -ext, ext);
-	} else if (outside_count == 2) {
-		float3 eA = float3(0.0f, 0.0f, 0.0f);
-		float3 eB = float3(0.0f, 0.0f, 0.0f);
-		if (!out_x) {
-			eA = float3(-ext.x, P_entry.y > 0.0f ? ext.y : -ext.y, P_entry.z > 0.0f ? ext.z : -ext.z);
-			eB = float3( ext.x, P_entry.y > 0.0f ? ext.y : -ext.y, P_entry.z > 0.0f ? ext.z : -ext.z);
-		} else if (!out_y) {
-			eA = float3(P_entry.x > 0.0f ? ext.x : -ext.x, -ext.y, P_entry.z > 0.0f ? ext.z : -ext.z);
-			eB = float3(P_entry.x > 0.0f ? ext.x : -ext.x,  ext.y, P_entry.z > 0.0f ? ext.z : -ext.z);
-		} else {
-			eA = float3(P_entry.x > 0.0f ? ext.x : -ext.x, P_entry.y > 0.0f ? ext.y : -ext.y, -ext.z);
-			eB = float3(P_entry.x > 0.0f ? ext.x : -ext.x, P_entry.y > 0.0f ? ext.y : -ext.y,  ext.z);
-		}
-		closest_points_between_segments(A, B, eA, eB, P_seg, Q_box);
-	} else if (outside_count == 3) {
-		float3 V = float3(
-			P_entry.x > 0.0f ? ext.x : -ext.x,
-			P_entry.y > 0.0f ? ext.y : -ext.y,
-			P_entry.z > 0.0f ? ext.z : -ext.z
-		);
-		P_seg = closest_point_on_segment(V, A, B);
-		Q_box = V;
 	}
 
-	float3 delta = P_seg - Q_box;
+	// We must find the exact closest point between the capsule core segment and the unexpanded Box.
+	// Since the distance between a line segment and an AABB is a strictly convex function, we use
+	// a Golden Section Search to robustly find the global minimum distance in exactly 32 iterations
+	// without any branching on complex Voronoi regions.
+	float t0 = max(0.0f, t_min_ray);
+	float t1 = min(1.0f, t_max_ray);
+
+	const float inv_phi = 0.6180339887f;
+	const float inv_phi_2 = 0.3819660113f;
+
+	float t_a = t0 + inv_phi_2 * (t1 - t0);
+	float t_b = t0 + inv_phi * (t1 - t0);
+
+	float3 pos_a = A + D * t_a;
+	float3 proj_a = clamp(pos_a, -ext, ext);
+	float3 d_a = pos_a - proj_a;
+	float dist_sq_a = dot(d_a, d_a);
+
+	float3 pos_b = A + D * t_b;
+	float3 proj_b = clamp(pos_b, -ext, ext);
+	float3 d_b = pos_b - proj_b;
+	float dist_sq_b = dot(d_b, d_b);
+
+	// The HLSL compiler will flatten this loop interior into branchless conditional moves (csel)
+	// since both branches execute the exact same number and type of ALU operations.
+	for (int iter = 0; iter < 32; iter++) {
+		if (dist_sq_a < dist_sq_b) {
+			t1 = t_b;
+			t_b = t_a;
+			dist_sq_b = dist_sq_a;
+			t_a = t0 + inv_phi_2 * (t1 - t0);
+			pos_a = A + D * t_a;
+			proj_a = clamp(pos_a, -ext, ext);
+			float3 temp_d = pos_a - proj_a;
+			dist_sq_a = dot(temp_d, temp_d);
+		} else {
+			t0 = t_a;
+			t_a = t_b;
+			dist_sq_a = dist_sq_b;
+			t_b = t0 + inv_phi * (t1 - t0);
+			pos_b = A + D * t_b;
+			proj_b = clamp(pos_b, -ext, ext);
+			float3 temp_d = pos_b - proj_b;
+			dist_sq_b = dot(temp_d, temp_d);
+		}
+	}
+
+	float best_t = (t0 + t1) * 0.5f;
+	float3 p_seg = A + D * best_t;
+	float3 q_box = clamp(p_seg, -ext, ext);
+
+	float3 delta = p_seg - q_box;
 	float dist_sq = dot(delta, delta);
 
 	if (dist_sq > r * r) return false;
 
-	if (outside_count > 0 && dist_sq > 0.00001f) {
+	// If distance is near zero, the core segment has breached the interior of the unexpanded Box.
+	// We skip shallow resolution and fall back to SAT below.
+	if (dist_sq > 0.00001f) {
 		float dist = sqrt(dist_sq);
 		
 		result.depth = r - dist;
 		float3 local_normal = delta * (1.0f / dist);
 		
 		result.normal = rotate_vector(local_normal, e_b.rotation);
-		result.point_b = local_to_world(Q_box, e_b.position, e_b.rotation);
+		result.point_b = local_to_world(q_box, e_b.position, e_b.rotation);
 		result.point_a = result.point_b - result.normal * result.depth;
 		
 		return true;
