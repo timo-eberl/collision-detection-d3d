@@ -68,6 +68,16 @@ float4 quat_inverse(float4 q) {
 	return float4(-q.x, -q.y, -q.z, q.w);
 }
 
+// Calculates the Grassman product (standard quaternion multiplication)
+float4 quat_mul(float4 a, float4 b) {
+	return float4(
+		a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+		a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+		a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+		a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z
+	);
+}
+
 float3 world_to_local(float3 p, float3 pos, float4 rot) {
 	return rotate_vector(p - pos, quat_inverse(rot));
 }
@@ -385,6 +395,18 @@ bool collision_test_sphere_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_sh
 	return true;
 }
 
+float3 get_box_support_point(float3 ext, float3 pos, float4 rot, float3 dir) {
+	float3 local_dir = rotate_vector(dir, quat_inverse(rot));
+
+	float3 local_support = float3(
+		local_dir.x > 0.0f ? ext.x : -ext.x,
+		local_dir.y > 0.0f ? ext.y : -ext.y,
+		local_dir.z > 0.0f ? ext.z : -ext.z
+	);
+
+	return local_to_world(local_support, pos, rot);
+}
+
 void get_box_support_edge(float3 ext, float3 pos, float4 rot, float3 dir, 
                           out float3 p1, out float3 p2) {
 	float3 local_dir = rotate_vector(dir, quat_inverse(rot));
@@ -593,11 +615,200 @@ bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_s
 	return true;
 }
 
+bool test_edge_axis(float3 axis, float r_a, float r_b, float abs_t, 
+                    inout float min_overlap, inout float3 best_axis, inout int best_type) {
+	float len_sq = dot(axis, axis);
+	
+	// Safely skip degenerate axes where the cross product length is near zero (parallel edges)
+	if (len_sq > 0.00001f) {
+		float len = sqrt(len_sq);
+		float overlap = (r_a + r_b - abs_t) / len;
+
+		if (overlap < 0.0f) return false;
+
+		if (overlap < min_overlap) {
+			// Bias towards Face-Axes (type 0 or 1) to prevent jitter from floating-point
+			// inaccuracies during flat face-to-face contact
+			if (best_type < 2 && overlap > min_overlap * 0.999f) {
+				return true;
+			}
+			min_overlap = overlap;
+			best_axis = axis * (1.0f / len);
+			best_type = 2;
+		}
+	}
+	return true;
+}
+
 bool collision_test_obb_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
                             out dx_collision result) {
 	result = (dx_collision)0;
-	// TODO implement
-	return false;
+
+	// B's position in A's local coordinate space
+	float3 T = world_to_local(e_b.position, e_a.position, e_a.rotation);
+
+	// Relative rotation quaternion from A to B
+	float4 rel_q = quat_mul(quat_inverse(e_a.rotation), e_b.rotation);
+	
+	// Extract the local axes of Box B in Box A's coordinate space.
+	// We manually expand the quaternion to a 3x3 matrix to perfectly match the 
+	// CPU's float-math operations and prevent precision-based SAT axis drift.
+	float xx = rel_q.x * rel_q.x, yy = rel_q.y * rel_q.y, zz = rel_q.z * rel_q.z;
+	float xy = rel_q.x * rel_q.y, xz = rel_q.x * rel_q.z, yz = rel_q.y * rel_q.z;
+	float wx = rel_q.w * rel_q.x, wy = rel_q.w * rel_q.y, wz = rel_q.w * rel_q.z;
+
+	float3 r_x = float3(1.0f - 2.0f * (yy + zz), 2.0f * (xy + wz),       2.0f * (xz - wy));
+	float3 r_y = float3(2.0f * (xy - wz),       1.0f - 2.0f * (xx + zz), 2.0f * (yz + wx));
+	float3 r_z = float3(2.0f * (xz + wy),       2.0f * (yz - wx),       1.0f - 2.0f * (xx + yy));
+
+	// Calculate absolute matrices with an epsilon to prevent division-by-zero or zero-length
+	// vectors during edge-edge cross products for perfectly axis-aligned boxes
+	float3 abs_rx = abs(r_x) + 0.000001f;
+	float3 abs_ry = abs(r_y) + 0.000001f;
+	float3 abs_rz = abs(r_z) + 0.000001f;
+
+	float3 eA = s_a.data.xyz;
+	float3 eB = s_b.data.xyz;
+
+	float min_overlap = 3.402823466e+38f;
+	float3 best_axis = float3(0.0f, 0.0f, 0.0f);
+	int best_type = -1; // 0 for Face A, 1 for Face B, 2 for Edge-Edge
+	float ra, rb, overlap;
+
+	// --- 3 Face Axes of Box A ---
+	// Axis X
+	ra = eA.x;
+	rb = dot(eB, float3(abs_rx.x, abs_ry.x, abs_rz.x));
+	overlap = ra + rb - abs(T.x);
+	if (overlap < 0.0f) return false;
+	min_overlap = overlap; best_axis = float3(1.0f, 0.0f, 0.0f); best_type = 0;
+
+	// Axis Y
+	ra = eA.y;
+	rb = dot(eB, float3(abs_rx.y, abs_ry.y, abs_rz.y));
+	overlap = ra + rb - abs(T.y);
+	if (overlap < 0.0f) return false;
+	if (overlap < min_overlap) { min_overlap = overlap; best_axis = float3(0.0f, 1.0f, 0.0f); best_type = 0; }
+
+	// Axis Z
+	ra = eA.z;
+	rb = dot(eB, float3(abs_rx.z, abs_ry.z, abs_rz.z));
+	overlap = ra + rb - abs(T.z);
+	if (overlap < 0.0f) return false;
+	if (overlap < min_overlap) { min_overlap = overlap; best_axis = float3(0.0f, 0.0f, 1.0f); best_type = 0; }
+
+	// --- 3 Face Axes of Box B ---
+	// Axis X
+	ra = dot(eA, abs_rx);
+	rb = eB.x;
+	overlap = ra + rb - abs(dot(T, r_x));
+	if (overlap < 0.0f) return false;
+	if (overlap < min_overlap) { min_overlap = overlap; best_axis = r_x; best_type = 1; }
+
+	// Axis Y
+	ra = dot(eA, abs_ry);
+	rb = eB.y;
+	overlap = ra + rb - abs(dot(T, r_y));
+	if (overlap < 0.0f) return false;
+	if (overlap < min_overlap) { min_overlap = overlap; best_axis = r_y; best_type = 1; }
+
+	// Axis Z
+	ra = dot(eA, abs_rz);
+	rb = eB.z;
+	overlap = ra + rb - abs(dot(T, r_z));
+	if (overlap < 0.0f) return false;
+	if (overlap < min_overlap) { min_overlap = overlap; best_axis = r_z; best_type = 1; }
+
+	// --- 9 Edge-Edge Axes ---
+	// Ax x Bx
+	if (!test_edge_axis(float3(0.0f, -r_x.z, r_x.y),
+	                    eA.y * abs_rx.z + eA.z * abs_rx.y,
+	                    eB.y * abs_rz.x + eB.z * abs_ry.x,
+	                    abs(T.y * r_x.z - T.z * r_x.y),
+	                    min_overlap, best_axis, best_type)) return false;
+
+	// Ax x By
+	if (!test_edge_axis(float3(0.0f, -r_y.z, r_y.y),
+	                    eA.y * abs_ry.z + eA.z * abs_ry.y,
+	                    eB.x * abs_rz.x + eB.z * abs_rx.x,
+	                    abs(T.y * r_y.z - T.z * r_y.y),
+	                    min_overlap, best_axis, best_type)) return false;
+
+	// Ax x Bz
+	if (!test_edge_axis(float3(0.0f, -r_z.z, r_z.y),
+	                    eA.y * abs_rz.z + eA.z * abs_rz.y,
+	                    eB.x * abs_ry.x + eB.y * abs_rx.x,
+	                    abs(T.y * r_z.z - T.z * r_z.y),
+	                    min_overlap, best_axis, best_type)) return false;
+
+	// Ay x Bx
+	if (!test_edge_axis(float3(r_x.z, 0.0f, -r_x.x),
+	                    eA.x * abs_rx.z + eA.z * abs_rx.x,
+	                    eB.y * abs_rz.y + eB.z * abs_ry.y,
+	                    abs(T.z * r_x.x - T.x * r_x.z),
+	                    min_overlap, best_axis, best_type)) return false;
+
+	// Ay x By
+	if (!test_edge_axis(float3(r_y.z, 0.0f, -r_y.x),
+	                    eA.x * abs_ry.z + eA.z * abs_ry.x,
+	                    eB.x * abs_rz.y + eB.z * abs_rx.y,
+	                    abs(T.z * r_y.x - T.x * r_y.z),
+	                    min_overlap, best_axis, best_type)) return false;
+
+	// Ay x Bz
+	if (!test_edge_axis(float3(r_z.z, 0.0f, -r_z.x),
+	                    eA.x * abs_rz.z + eA.z * abs_rz.x,
+	                    eB.x * abs_ry.y + eB.y * abs_rx.y,
+	                    abs(T.z * r_z.x - T.x * r_z.z),
+	                    min_overlap, best_axis, best_type)) return false;
+
+	// Az x Bx
+	if (!test_edge_axis(float3(-r_x.y, r_x.x, 0.0f),
+	                    eA.x * abs_rx.y + eA.y * abs_rx.x,
+	                    eB.y * abs_rz.z + eB.z * abs_ry.z,
+	                    abs(T.x * r_x.y - T.y * r_x.x),
+	                    min_overlap, best_axis, best_type)) return false;
+
+	// Az x By
+	if (!test_edge_axis(float3(-r_y.y, r_y.x, 0.0f),
+	                    eA.x * abs_ry.y + eA.y * abs_ry.x,
+	                    eB.x * abs_rz.z + eB.z * abs_rx.z,
+	                    abs(T.x * r_y.y - T.y * r_y.x),
+	                    min_overlap, best_axis, best_type)) return false;
+
+	// Az x Bz
+	if (!test_edge_axis(float3(-r_z.y, r_z.x, 0.0f),
+	                    eA.x * abs_rz.y + eA.y * abs_rz.x,
+	                    eB.x * abs_ry.z + eB.y * abs_rx.z,
+	                    abs(T.x * r_z.y - T.y * r_z.x),
+	                    min_overlap, best_axis, best_type)) return false;
+
+	if (min_overlap <= 0.0f) return false;
+
+	result.depth = min_overlap;
+
+	// Enforce convention: Normal must strictly point from Shape B to Shape A
+	if (dot(best_axis, T) > 0.0f) {
+		best_axis = -best_axis;
+	}
+
+	result.normal = rotate_vector(best_axis, e_a.rotation);
+
+	if (best_type == 0) {
+		result.point_b = get_box_support_point(eB, e_b.position, e_b.rotation, result.normal);
+		result.point_a = result.point_b - result.normal * result.depth;
+	} else if (best_type == 1) {
+		result.point_a = get_box_support_point(eA, e_a.position, e_a.rotation, -result.normal);
+		result.point_b = result.point_a + result.normal * result.depth;
+	} else {
+		float3 a_p1, a_p2, b_p1, b_p2;
+		get_box_support_edge(eA, e_a.position, e_a.rotation, -result.normal, a_p1, a_p2);
+		get_box_support_edge(eB, e_b.position, e_b.rotation, result.normal, b_p1, b_p2);
+
+		closest_points_between_segments(a_p1, a_p2, b_p1, b_p2, result.point_a, result.point_b);
+	}
+
+	return true;
 }
 
 bool evaluate_narrow_phase(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
