@@ -44,24 +44,31 @@ int main() {
 	dx_state_collision* state = dx_state_collision_create(sh);
 
 	uint32_t frame_index = 0;
-	uint32_t counts[3];
+	uint32_t counts[4];
 
-	while (fread(counts, sizeof(uint32_t), 3, file) == 3) {
+	while (fread(counts, sizeof(uint32_t), 4, file) == 4) {
 		uint32_t rigid_count = counts[0];
 		uint32_t static_count = counts[1];
-		uint32_t expected_col_count = counts[2];
+		uint32_t shape_count = counts[2];
+		uint32_t expected_col_count = counts[3];
 
-		dx_shape* rigids = (dx_shape*)malloc(rigid_count * sizeof(dx_shape));
-		dx_shape* statics = (dx_shape*)malloc(static_count * sizeof(dx_shape));
-		dx_collision* expected_cols = (dx_collision*)malloc(expected_col_count * sizeof(dx_collision));
+		dx_entity* rigids = (dx_entity*)malloc(rigid_count * sizeof(dx_entity));
+		dx_entity* statics = (dx_entity*)malloc(static_count * sizeof(dx_entity));
+		dx_shape* shapes = (dx_shape*)malloc(shape_count * sizeof(dx_shape));
+		dx_collision* expected_cols = (dx_collision*)malloc(
+			expected_col_count * sizeof(dx_collision));
 
-		if (rigid_count > 0) fread(rigids, sizeof(dx_shape), rigid_count, file);
-		if (static_count > 0) fread(statics, sizeof(dx_shape), static_count, file);
-		if (expected_col_count > 0) fread(expected_cols, sizeof(dx_collision), expected_col_count, file);
+		if (rigid_count > 0) fread(rigids, sizeof(dx_entity), rigid_count, file);
+		if (static_count > 0) fread(statics, sizeof(dx_entity), static_count, file);
+		if (shape_count > 0) fread(shapes, sizeof(dx_shape), shape_count, file);
+		if (expected_col_count > 0) {
+			fread(expected_cols, sizeof(dx_collision), expected_col_count, file);
+		}
 
 		uint32_t actual_col_count = 0;
 		dx_collision* actual_cols = dx_run_collision(
-			sh, state, rigids, rigid_count, statics, static_count, true, &actual_col_count);
+			sh, state, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
+			&actual_col_count);
 
 		if (expected_col_count > 0) {
 			qsort(expected_cols, expected_col_count, sizeof(dx_collision), compare_collisions);
@@ -160,6 +167,7 @@ int main() {
 
 		free(rigids);
 		free(statics);
+		free(shapes);
 		free(expected_cols);
 		if (actual_cols) free(actual_cols);
 
