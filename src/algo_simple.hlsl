@@ -64,6 +64,18 @@ float3 rotate_vector(float3 v, float4 q) {
 	return v + q.w * t + cross(q_xyz, t);
 }
 
+float4 quat_inverse(float4 q) {
+	return float4(-q.x, -q.y, -q.z, q.w);
+}
+
+float3 world_to_local(float3 p, float3 pos, float4 rot) {
+	return rotate_vector(p - pos, quat_inverse(rot));
+}
+
+float3 local_to_world(float3 p, float3 pos, float4 rot) {
+	return pos + rotate_vector(p, rot);
+}
+
 [numthreads(256, 1, 1)]
 void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 	uint i = DTid.x;
@@ -211,38 +223,15 @@ void closest_points_between_segments(float3 p1, float3 q1, float3 p2, float3 q2,
 	c2 = p2 + d2 * t;
 }
 
-struct col_shape {
-	float3 p_a;
-	float radius;
-	float3 p_b;
-	uint type;
-};
-
-col_shape get_col_shape(dx_entity e, dx_shape s) {
-	col_shape cs;
-	cs.type = e.shape_type;
-	if (e.shape_type == 0) {
-		cs.p_a = e.position;
-		cs.radius = s.data.x;
-		cs.p_b = e.position;
-	} else if (e.shape_type == 1) {
-		float3 up = rotate_vector(float3(0.0f, 1.0f, 0.0f), e.rotation);
-		cs.p_a = e.position + up * s.data.x;
-		cs.p_b = e.position - up * s.data.x;
-		cs.radius = s.data.y;
-	} else {
-		cs.p_a = e.position;
-		cs.p_b = e.position;
-		cs.radius = 0.0f;
-	}
-	return cs;
-}
-
-bool collision_test_sphere_sphere(col_shape a, col_shape b, out dx_collision result) {
+bool collision_test_sphere_sphere(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+                                  out dx_collision result) {
 	result = (dx_collision)0;
 
-	float radius_sum = a.radius + b.radius;
-	float3 delta = b.p_a - a.p_a;
+	float radius_a = s_a.data.x;
+	float radius_b = s_b.data.x;
+	float radius_sum = radius_a + radius_b;
+	
+	float3 delta = e_b.position - e_a.position;
 	float dist_sq = dot(delta, delta);
 
 	if (dist_sq > radius_sum * radius_sum) return false;
@@ -256,19 +245,27 @@ bool collision_test_sphere_sphere(col_shape a, col_shape b, out dx_collision res
 		result.normal = delta * (-1.0f / distance);
 	}
 
-	result.point_a = a.p_a + result.normal * -a.radius;
-	result.point_b = b.p_a + result.normal * b.radius;
+	result.point_a = e_a.position + result.normal * -radius_a;
+	result.point_b = e_b.position + result.normal * radius_b;
 
 	return true;
 }
 
-bool collision_test_sphere_capsule(col_shape a, col_shape b, out dx_collision result) {
+bool collision_test_sphere_capsule(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+                                   out dx_collision result) {
 	result = (dx_collision)0;
 
-	float3 closest_on_cap = closest_point_on_segment(a.p_a, b.p_a, b.p_b);
+	float radius_a = s_a.data.x;
+	float radius_b = s_b.data.y;
+	float radius_sum = radius_a + radius_b;
 
-	float radius_sum = a.radius + b.radius;
-	float3 delta = closest_on_cap - a.p_a;
+	float3 up_b = rotate_vector(float3(0.0f, 1.0f, 0.0f), e_b.rotation);
+	float3 cap_p_a = e_b.position + up_b * s_b.data.x;
+	float3 cap_p_b = e_b.position - up_b * s_b.data.x;
+
+	float3 closest_on_cap = closest_point_on_segment(e_a.position, cap_p_a, cap_p_b);
+
+	float3 delta = closest_on_cap - e_a.position;
 	float dist_sq = dot(delta, delta);
 
 	if (dist_sq > radius_sum * radius_sum) return false;
@@ -282,19 +279,31 @@ bool collision_test_sphere_capsule(col_shape a, col_shape b, out dx_collision re
 		result.normal = delta * (-1.0f / distance);
 	}
 
-	result.point_a = a.p_a + result.normal * -a.radius;
-	result.point_b = closest_on_cap + result.normal * b.radius;
+	result.point_a = e_a.position + result.normal * -radius_a;
+	result.point_b = closest_on_cap + result.normal * radius_b;
 
 	return true;
 }
 
-bool collision_test_capsule_capsule(col_shape a, col_shape b, out dx_collision result) {
+bool collision_test_capsule_capsule(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+                                    out dx_collision result) {
 	result = (dx_collision)0;
+
+	float radius_a = s_a.data.y;
+	float radius_b = s_b.data.y;
+	float radius_sum = radius_a + radius_b;
+
+	float3 up_a = rotate_vector(float3(0.0f, 1.0f, 0.0f), e_a.rotation);
+	float3 a_p_a = e_a.position + up_a * s_a.data.x;
+	float3 a_p_b = e_a.position - up_a * s_a.data.x;
+
+	float3 up_b = rotate_vector(float3(0.0f, 1.0f, 0.0f), e_b.rotation);
+	float3 b_p_a = e_b.position + up_b * s_b.data.x;
+	float3 b_p_b = e_b.position - up_b * s_b.data.x;
 
 	float3 closest_a, closest_b;
-	closest_points_between_segments(a.p_a, a.p_b, b.p_a, b.p_b, closest_a, closest_b);
+	closest_points_between_segments(a_p_a, a_p_b, b_p_a, b_p_b, closest_a, closest_b);
 
-	float radius_sum = a.radius + b.radius;
 	float3 delta = closest_b - closest_a;
 	float dist_sq = dot(delta, delta);
 
@@ -309,47 +318,63 @@ bool collision_test_capsule_capsule(col_shape a, col_shape b, out dx_collision r
 		result.normal = delta * (-1.0f / distance);
 	}
 
-	result.point_a = closest_a + result.normal * -a.radius;
-	result.point_b = closest_b + result.normal * b.radius;
+	result.point_a = closest_a + result.normal * -radius_a;
+	result.point_b = closest_b + result.normal * radius_b;
 
 	return true;
 }
 
-bool collision_test_sphere_obb(col_shape a, col_shape b, out dx_collision result) {
+bool collision_test_sphere_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+                               out dx_collision result) {
 	result = (dx_collision)0;
 	// TODO implement
 	return false;
 }
 
-bool collision_test_capsule_obb(col_shape a, col_shape b, out dx_collision result) {
+bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+                                out dx_collision result) {
 	result = (dx_collision)0;
 	// TODO implement
 	return false;
 }
 
-bool collision_test_obb_obb(col_shape a, col_shape b, out dx_collision result) {
+bool collision_test_obb_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+                            out dx_collision result) {
 	result = (dx_collision)0;
 	// TODO implement
 	return false;
 }
 
-bool evaluate_narrow_phase(col_shape a, col_shape b, out dx_collision result) {
+bool evaluate_narrow_phase(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+                           out dx_collision result) {
 	bool swapped = false;
 	
-	if (a.type > b.type) {
-		col_shape temp_shape = a;
-		a = b;
-		b = temp_shape;
+	if (e_a.shape_type > e_b.shape_type) {
+		dx_entity temp_e = e_a;
+		e_a = e_b;
+		e_b = temp_e;
+
+		dx_shape temp_s = s_a;
+		s_a = s_b;
+		s_b = temp_s;
+		
 		swapped = true;
 	}
 
 	bool hit = false;
-	if (a.type == 0 && b.type == 0) hit = collision_test_sphere_sphere(a, b, result);
-	else if (a.type == 0 && b.type == 1) hit = collision_test_sphere_capsule(a, b, result);
-	else if (a.type == 1 && b.type == 1) hit = collision_test_capsule_capsule(a, b, result);
-	else if (a.type == 0 && b.type == 2) hit = collision_test_sphere_obb(a, b, result);
-	else if (a.type == 1 && b.type == 2) hit = collision_test_capsule_obb(a, b, result);
-	else if (a.type == 2 && b.type == 2) hit = collision_test_obb_obb(a, b, result);
+	if (e_a.shape_type == 0 && e_b.shape_type == 0) {
+		hit = collision_test_sphere_sphere(e_a, s_a, e_b, s_b, result);
+	} else if (e_a.shape_type == 0 && e_b.shape_type == 1) {
+		hit = collision_test_sphere_capsule(e_a, s_a, e_b, s_b, result);
+	} else if (e_a.shape_type == 1 && e_b.shape_type == 1) {
+		hit = collision_test_capsule_capsule(e_a, s_a, e_b, s_b, result);
+	} else if (e_a.shape_type == 0 && e_b.shape_type == 2) {
+		hit = collision_test_sphere_obb(e_a, s_a, e_b, s_b, result);
+	} else if (e_a.shape_type == 1 && e_b.shape_type == 2) {
+		hit = collision_test_capsule_obb(e_a, s_a, e_b, s_b, result);
+	} else if (e_a.shape_type == 2 && e_b.shape_type == 2) {
+		hit = collision_test_obb_obb(e_a, s_a, e_b, s_b, result);
+	}
 
 	if (swapped && hit) {
 		result.normal = -result.normal;
@@ -379,11 +404,8 @@ void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
 	dx_shape s_a = shapes_srv[e_a.shape_index];
 	dx_shape s_b = shapes_srv[e_b.shape_index];
 
-	col_shape cs_a = get_col_shape(e_a, s_a);
-	col_shape cs_b = get_col_shape(e_b, s_b);
-
 	dx_collision c;
-	if (evaluate_narrow_phase(cs_a, cs_b, c)) {
+	if (evaluate_narrow_phase(e_a, s_a, e_b, s_b, c)) {
 		uint idx;
 		InterlockedAdd(col_count_uav[0], 1, idx);
 		if (idx < max_collisions) {
