@@ -327,8 +327,60 @@ bool collision_test_capsule_capsule(dx_entity e_a, dx_shape s_a, dx_entity e_b, 
 bool collision_test_sphere_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
                                out dx_collision result) {
 	result = (dx_collision)0;
-	// TODO implement
-	return false;
+
+	float radius = s_a.data.x;
+	float3 extents = s_b.data.xyz;
+
+	// Transform the sphere's center into the OBB's local coordinate space to simplify the OBB
+	// into an AABB centered at the origin
+	float3 local_center = world_to_local(e_a.position, e_b.position, e_b.rotation);
+
+	// Find the closest point on the AABB to the sphere center by clamping the coordinates
+	float3 clamped = clamp(local_center, -extents, extents);
+	float3 delta = local_center - clamped;
+	float dist_sq = dot(delta, delta);
+
+	float3 local_normal;
+	float depth;
+
+	// If the sphere's center is inside the box, the clamped point equals the center point.
+	// This results in a zero distance vector, which cannot be normalized to find a push-out
+	// direction. To resolve this deep penetration, we calculate the distance from the center
+	// to each of the 3 geometric faces and force the collision onto the closest one.
+	if (dist_sq < 0.00001f) {
+		float3 dist_to_face = extents - abs(local_center);
+
+		if (dist_to_face.x <= dist_to_face.y && dist_to_face.x <= dist_to_face.z) {
+			clamped.x = local_center.x > 0.0f ? extents.x : -extents.x;
+			local_normal = float3(local_center.x > 0.0f ? 1.0f : -1.0f, 0.0f, 0.0f);
+			depth = radius + dist_to_face.x;
+		} else if (dist_to_face.y <= dist_to_face.x && dist_to_face.y <= dist_to_face.z) {
+			clamped.y = local_center.y > 0.0f ? extents.y : -extents.y;
+			local_normal = float3(0.0f, local_center.y > 0.0f ? 1.0f : -1.0f, 0.0f);
+			depth = radius + dist_to_face.y;
+		} else {
+			clamped.z = local_center.z > 0.0f ? extents.z : -extents.z;
+			local_normal = float3(0.0f, 0.0f, local_center.z > 0.0f ? 1.0f : -1.0f);
+			depth = radius + dist_to_face.z;
+		}
+	} else {
+		if (dist_sq > radius * radius) return false;
+
+		float dist = sqrt(dist_sq);
+		depth = radius - dist;
+		local_normal = delta / dist;
+	}
+
+	result.depth = depth;
+
+	// Convert local calculations back into world space
+	result.normal = rotate_vector(local_normal, e_b.rotation);
+	result.point_b = local_to_world(clamped, e_b.position, e_b.rotation);
+	
+	// The deepest penetrating point on the sphere lies opposite to the collision normal
+	result.point_a = e_a.position + result.normal * -radius;
+
+	return true;
 }
 
 bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
