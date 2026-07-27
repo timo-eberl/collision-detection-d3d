@@ -47,12 +47,16 @@ struct dx_shared_state {
 	size_t up_rigids_size;
 	ID3D12Resource* up_statics;
 	size_t up_statics_size;
+	ID3D12Resource* up_shapes;
+	size_t up_shapes_size;
 
 	// Default Buffers (GPU Only)
 	ID3D12Resource* d_rigids;
 	size_t d_rigids_size;
 	ID3D12Resource* d_statics;
 	size_t d_statics_size;
+	ID3D12Resource* d_shapes;
+	size_t d_shapes_size;
 	ID3D12Resource* d_collisions;
 	size_t d_collisions_size;
 	ID3D12Resource* d_col_count;
@@ -185,18 +189,23 @@ static inline void execute_and_wait(dx_shared_state* sh) {
 
 // Allocates/resizes all necessary D3D12 buffers (Upload, Default, and Readback) based on capacities
 static void shared_ensure_buffers(dx_shared_state* sh, uint32_t rigid_count, uint32_t static_count,
-								  size_t max_collisions) {
-	ensure_dx_buffer(sh->device, &sh->up_rigids, &sh->up_rigids_size, rigid_count, sizeof(dx_shape),
-					 D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, 1.0f);
-	ensure_dx_buffer(sh->device, &sh->d_rigids, &sh->d_rigids_size, rigid_count, sizeof(dx_shape),
+								  uint32_t shape_count, size_t max_collisions) {
+	ensure_dx_buffer(sh->device, &sh->up_rigids, &sh->up_rigids_size, rigid_count,
+					 sizeof(dx_entity), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, 1.0f);
+	ensure_dx_buffer(sh->device, &sh->d_rigids, &sh->d_rigids_size, rigid_count, sizeof(dx_entity),
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, 1.0f);
 
 	if (static_count > 0) {
 		ensure_dx_buffer(sh->device, &sh->up_statics, &sh->up_statics_size, static_count,
-						 sizeof(dx_shape), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, 1.0f);
+						 sizeof(dx_entity), D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, 1.0f);
 		ensure_dx_buffer(sh->device, &sh->d_statics, &sh->d_statics_size, static_count,
-						 sizeof(dx_shape), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, 1.0f);
+						 sizeof(dx_entity), D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, 1.0f);
 	}
+
+	ensure_dx_buffer(sh->device, &sh->up_shapes, &sh->up_shapes_size, shape_count, sizeof(dx_shape),
+					 D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, 1.0f);
+	ensure_dx_buffer(sh->device, &sh->d_shapes, &sh->d_shapes_size, shape_count, sizeof(dx_shape),
+					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_NONE, 1.0f);
 
 	ensure_dx_buffer(sh->device, &sh->d_col_count, &sh->d_col_count_size, 1, sizeof(uint32_t),
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
@@ -218,20 +227,25 @@ static void shared_ensure_buffers(dx_shared_state* sh, uint32_t rigid_count, uin
 
 // Maps the upload buffers and copies the host shape data into them.
 // Takes only the specific resources it operates on.
-static void shared_write_inputs(ID3D12Resource* up_rigids, const dx_shape* rigids,
+static void shared_write_inputs(ID3D12Resource* up_rigids, const dx_entity* rigids,
 								uint32_t rigid_count, ID3D12Resource* up_statics,
-								const dx_shape* statics, uint32_t static_count,
-								bool statics_changed) {
+								const dx_entity* statics, uint32_t static_count,
+								bool statics_changed, ID3D12Resource* up_shapes,
+								const dx_shape* shapes, uint32_t shape_count) {
 	void* mapped = nullptr;
 	up_rigids->Map(0, nullptr, &mapped);
-	memcpy(mapped, rigids, rigid_count * sizeof(dx_shape));
+	memcpy(mapped, rigids, rigid_count * sizeof(dx_entity));
 	up_rigids->Unmap(0, nullptr);
 
 	if (statics_changed && static_count > 0) {
 		up_statics->Map(0, nullptr, &mapped);
-		memcpy(mapped, statics, static_count * sizeof(dx_shape));
+		memcpy(mapped, statics, static_count * sizeof(dx_entity));
 		up_statics->Unmap(0, nullptr);
 	}
+
+	up_shapes->Map(0, nullptr, &mapped);
+	memcpy(mapped, shapes, shape_count * sizeof(dx_shape));
+	up_shapes->Unmap(0, nullptr);
 }
 
 // Maps the readback buffer and extracts the final collision count.

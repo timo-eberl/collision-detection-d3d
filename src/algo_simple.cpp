@@ -1,3 +1,4 @@
+#include "algo_simple_aabb_shader.h"
 #include "algo_simple_broad_shader.h"
 #include "algo_simple_narrow_shader.h"
 #include "collision_detection_d3d.h"
@@ -21,10 +22,18 @@ struct dx_potential_pair {
 	uint32_t pad;
 };
 
+typedef struct { float min_x, max_x, min_y, max_y, min_z, max_z; } packed_aabb;
+
 struct dx_state_collision {
 	ID3D12RootSignature* root_sig;
+	ID3D12PipelineState* pso_aabb_prep;
 	ID3D12PipelineState* pso_broad;
 	ID3D12PipelineState* pso_narrow;
+
+	ID3D12Resource* d_aabb_rigids;
+	size_t d_aabb_rigids_size;
+	ID3D12Resource* d_aabb_statics;
+	size_t d_aabb_statics_size;
 
 	ID3D12Resource* d_potential_pairs;
 	size_t d_potential_pairs_size;
@@ -39,59 +48,33 @@ struct dx_state_collision {
 extern "C" dx_state_collision* dx_state_collision_create(dx_shared_state* sh) {
 	dx_state_collision* s = (dx_state_collision*)calloc(1, sizeof(dx_state_collision));
 
-	D3D12_ROOT_PARAMETER root_params[8] = {};
+	D3D12_ROOT_PARAMETER root_params[12] = {};
 
-	// Parameter 0: Constants (register b0)
+	// b0: Constants
 	root_params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
 	root_params[0].Constants.ShaderRegister = 0;
 	root_params[0].Constants.RegisterSpace = 0;
-	root_params[0].Constants.Num32BitValues = 4;
+	root_params[0].Constants.Num32BitValues = 5;
 	root_params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	// Parameter 1: rigids SRV (register t0)
-	root_params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-	root_params[1].Descriptor.ShaderRegister = 0;
-	root_params[1].Descriptor.RegisterSpace = 0;
-	root_params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	// SRVs: t0 to t5
+	for (int i = 0; i < 6; ++i) {
+		root_params[1 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+		root_params[1 + i].Descriptor.ShaderRegister = i;
+		root_params[1 + i].Descriptor.RegisterSpace = 0;
+		root_params[1 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	}
 
-	// Parameter 2: statics SRV (register t1)
-	root_params[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-	root_params[2].Descriptor.ShaderRegister = 1;
-	root_params[2].Descriptor.RegisterSpace = 0;
-	root_params[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-	// Parameter 3: potential_pairs_srv SRV (register t2)
-	root_params[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-	root_params[3].Descriptor.ShaderRegister = 2;
-	root_params[3].Descriptor.RegisterSpace = 0;
-	root_params[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-	// Parameter 4: potential_pairs_uav UAV (register u0)
-	root_params[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
-	root_params[4].Descriptor.ShaderRegister = 0;
-	root_params[4].Descriptor.RegisterSpace = 0;
-	root_params[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-	// Parameter 5: pair_count_uav UAV (register u1)
-	root_params[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
-	root_params[5].Descriptor.ShaderRegister = 1;
-	root_params[5].Descriptor.RegisterSpace = 0;
-	root_params[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-	// Parameter 6: collisions UAV (register u2)
-	root_params[6].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
-	root_params[6].Descriptor.ShaderRegister = 2;
-	root_params[6].Descriptor.RegisterSpace = 0;
-	root_params[6].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-	// Parameter 7: col_count_uav UAV (register u3)
-	root_params[7].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
-	root_params[7].Descriptor.ShaderRegister = 3;
-	root_params[7].Descriptor.RegisterSpace = 0;
-	root_params[7].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	// UAVs: u0 to u4
+	for (int i = 0; i < 5; ++i) {
+		root_params[7 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+		root_params[7 + i].Descriptor.ShaderRegister = i;
+		root_params[7 + i].Descriptor.RegisterSpace = 0;
+		root_params[7 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	}
 
 	D3D12_ROOT_SIGNATURE_DESC rs_desc = {};
-	rs_desc.NumParameters = 8;
+	rs_desc.NumParameters = 12;
 	rs_desc.pParameters = root_params;
 
 	ID3DBlob* signature = nullptr;
@@ -116,6 +99,11 @@ extern "C" dx_state_collision* dx_state_collision_create(dx_shared_state* sh) {
 	D3D12_COMPUTE_PIPELINE_STATE_DESC pso_desc = {};
 	pso_desc.pRootSignature = s->root_sig;
 
+	pso_desc.CS.pShaderBytecode = algo_simple_aabb_shader;
+	pso_desc.CS.BytecodeLength = sizeof(algo_simple_aabb_shader);
+	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_aabb_prep)));
+	s->pso_aabb_prep->SetName(L"Simple_AABB_Prep_PSO");
+
 	pso_desc.CS.pShaderBytecode = algo_simple_broad_shader;
 	pso_desc.CS.BytecodeLength = sizeof(algo_simple_broad_shader);
 	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_broad)));
@@ -131,9 +119,12 @@ extern "C" dx_state_collision* dx_state_collision_create(dx_shared_state* sh) {
 
 extern "C" void dx_state_collision_destroy(dx_state_collision* s) {
 	if (!s) return;
+	if (s->pso_aabb_prep) s->pso_aabb_prep->Release();
 	if (s->pso_broad) s->pso_broad->Release();
 	if (s->pso_narrow) s->pso_narrow->Release();
 	if (s->root_sig) s->root_sig->Release();
+	if (s->d_aabb_rigids) s->d_aabb_rigids->Release();
+	if (s->d_aabb_statics) s->d_aabb_statics->Release();
 	if (s->d_potential_pairs) s->d_potential_pairs->Release();
 	if (s->d_pair_count) s->d_pair_count->Release();
 	if (s->rb_pair_count) s->rb_pair_count->Release();
@@ -141,8 +132,9 @@ extern "C" void dx_state_collision_destroy(dx_state_collision* s) {
 }
 
 extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collision* state,
-										  const dx_shape* rigids, uint32_t rigid_count,
-										  const dx_shape* statics, uint32_t static_count,
+										  const dx_entity* rigids, uint32_t rigid_count,
+										  const dx_entity* statics, uint32_t static_count,
+										  const dx_shape* shapes, uint32_t shape_count,
 										  bool statics_changed, uint32_t* out_count) {
 	*out_count = 0;
 	if (rigid_count == 0) return nullptr;
@@ -161,14 +153,22 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 	for (int attempt = 0; attempt < 2; ++attempt) {
 		// Only profile first attempt to not confuse the profiler
 		bool enable_profiling = (attempt > 0) ? false : true;
-		shared_ensure_buffers(sh, rigid_count, static_count, cols_needed);
+		shared_ensure_buffers(sh, rigid_count, static_count, shape_count, cols_needed);
 		shared_write_inputs(sh->up_rigids, rigids, rigid_count, sh->up_statics, statics,
-							static_count, statics_changed);
+							static_count, statics_changed, sh->up_shapes, shapes, shape_count);
 
 		// Compute the maximum capacity using the actual allocated size of the pairs buffer
 		uint32_t kernel_max = (sh->d_collisions_size > (size_t)UINT32_MAX)
 								  ? UINT32_MAX : (uint32_t)sh->d_collisions_size;
 
+		ensure_dx_buffer(sh->device, &state->d_aabb_rigids, &state->d_aabb_rigids_size, rigid_count,
+						 sizeof(packed_aabb), D3D12_HEAP_TYPE_DEFAULT,
+						 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
+		if (static_count > 0) {
+			ensure_dx_buffer(sh->device, &state->d_aabb_statics, &state->d_aabb_statics_size,
+							 static_count, sizeof(packed_aabb), D3D12_HEAP_TYPE_DEFAULT,
+							 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
+		}
 		ensure_dx_buffer(sh->device, &state->d_potential_pairs, &state->d_potential_pairs_size,
 						 kernel_max, sizeof(dx_potential_pair), D3D12_HEAP_TYPE_DEFAULT,
 						 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
@@ -179,16 +179,16 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 						 1, sizeof(uint32_t), D3D12_HEAP_TYPE_READBACK,
 						 D3D12_RESOURCE_FLAG_NONE, 1.0f);
 
-		if (state->d_potential_pairs) state->d_potential_pairs->SetName(L"Potential_Pairs_UAV");
-
 		if (enable_profiling) dx_profile_begin(&prof, sh);
 		PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 0, 0), "Phase: Upload Memory");
 
 		sh->cmd_list->CopyBufferRegion(sh->d_rigids, 0, sh->up_rigids, 0,
-									   rigid_count * sizeof(dx_shape));
+									   rigid_count * sizeof(dx_entity));
+		sh->cmd_list->CopyBufferRegion(sh->d_shapes, 0, sh->up_shapes, 0,
+									   shape_count * sizeof(dx_shape));
 		if (statics_changed && static_count > 0) {
 			sh->cmd_list->CopyBufferRegion(sh->d_statics, 0, sh->up_statics, 0,
-										   static_count * sizeof(dx_shape));
+										   static_count * sizeof(dx_entity));
 		}
 		sh->cmd_list->CopyBufferRegion(sh->d_col_count, 0, sh->up_zero, 0, sizeof(uint32_t));
 		sh->cmd_list->CopyBufferRegion(state->d_pair_count, 0, sh->up_zero, 0, sizeof(uint32_t));
@@ -205,37 +205,83 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 		bg_upload.Type = D3D12_BARRIER_TYPE_GLOBAL;
 		bg_upload.NumBarriers = 1;
 		bg_upload.pGlobalBarriers = &gb_upload;
-
 		sh->cmd_list->Barrier(1, &bg_upload);
 
 		PIXEndEvent(sh->cmd_list);
 		if (enable_profiling) dx_profile_step(&prof, sh, "upload");
 
+		// --- AABB Prep Phase ---
 		sh->cmd_list->SetComputeRootSignature(state->root_sig);
-		sh->cmd_list->SetPipelineState(state->pso_broad);
+		sh->cmd_list->SetPipelineState(state->pso_aabb_prep);
 
-		uint32_t constants[4] = { rigid_count, static_count, kernel_max, 0 };
-		sh->cmd_list->SetComputeRoot32BitConstants(0, 4, constants, 0);
-		sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress());
-		if (static_count > 0) {
-			sh->cmd_list->SetComputeRootShaderResourceView(
-				2, sh->d_statics->GetGPUVirtualAddress());
-		} else {
-			// Bind dummy SRV to prevent driver complaints if static_count == 0
-			sh->cmd_list->SetComputeRootShaderResourceView(
-				2, sh->d_rigids->GetGPUVirtualAddress());
+		PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 255, 0), "Phase: AABB Prep");
+
+		uint32_t constants[5] = { rigid_count, rigid_count, static_count, kernel_max, 0 };
+		sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
+
+		// Common Bindings
+		sh->cmd_list->SetComputeRootShaderResourceView(3, sh->d_shapes->GetGPUVirtualAddress()); // t2
+
+		// Dummy bindings for unused slots to avoid validation warnings
+		sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress()); // t1
+		sh->cmd_list->SetComputeRootShaderResourceView(4, sh->d_rigids->GetGPUVirtualAddress()); // t3
+		sh->cmd_list->SetComputeRootShaderResourceView(5, sh->d_rigids->GetGPUVirtualAddress()); // t4
+		sh->cmd_list->SetComputeRootShaderResourceView(6, sh->d_rigids->GetGPUVirtualAddress()); // t5
+		sh->cmd_list->SetComputeRootUnorderedAccessView(8, sh->d_col_count->GetGPUVirtualAddress()); // u1
+		sh->cmd_list->SetComputeRootUnorderedAccessView(9, sh->d_col_count->GetGPUVirtualAddress()); // u2
+		sh->cmd_list->SetComputeRootUnorderedAccessView(10, sh->d_col_count->GetGPUVirtualAddress()); // u3
+		sh->cmd_list->SetComputeRootUnorderedAccessView(11, sh->d_col_count->GetGPUVirtualAddress()); // u4
+
+		// Prep Rigids
+		sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
+		sh->cmd_list->SetComputeRootUnorderedAccessView(7, state->d_aabb_rigids->GetGPUVirtualAddress()); // u0
+		sh->cmd_list->Dispatch(grid_size, 1, 1);
+
+		// Prep Statics
+		if (statics_changed && static_count > 0) {
+			constants[0] = static_count;
+			sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
+			sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_statics->GetGPUVirtualAddress()); // t0
+			sh->cmd_list->SetComputeRootUnorderedAccessView(7, state->d_aabb_statics->GetGPUVirtualAddress()); // u0
+			uint32_t static_grid = (static_count + block_size - 1) / block_size;
+			sh->cmd_list->Dispatch(static_grid, 1, 1);
 		}
 
-		sh->cmd_list->SetComputeRootShaderResourceView(
-			3, state->d_potential_pairs->GetGPUVirtualAddress());
-		sh->cmd_list->SetComputeRootUnorderedAccessView(
-			4, state->d_potential_pairs->GetGPUVirtualAddress());
-		sh->cmd_list->SetComputeRootUnorderedAccessView(
-			5, state->d_pair_count->GetGPUVirtualAddress());
-		sh->cmd_list->SetComputeRootUnorderedAccessView(
-			6, sh->d_collisions->GetGPUVirtualAddress());
-		sh->cmd_list->SetComputeRootUnorderedAccessView(
-			7, sh->d_col_count->GetGPUVirtualAddress());
+		PIXEndEvent(sh->cmd_list);
+		if (enable_profiling) dx_profile_step(&prof, sh, "aabb_prep");
+
+		D3D12_GLOBAL_BARRIER gb_prep = {};
+		gb_prep.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+		gb_prep.SyncAfter = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+		gb_prep.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+		gb_prep.AccessAfter = D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
+							  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+
+		D3D12_BARRIER_GROUP bg_prep = {};
+		bg_prep.Type = D3D12_BARRIER_TYPE_GLOBAL;
+		bg_prep.NumBarriers = 1;
+		bg_prep.pGlobalBarriers = &gb_prep;
+		sh->cmd_list->Barrier(1, &bg_prep);
+
+		// --- Broad Phase ---
+		sh->cmd_list->SetPipelineState(state->pso_broad);
+
+		constants[0] = 0; // item_count not used here
+		sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
+
+		sh->cmd_list->SetComputeRootShaderResourceView(4, state->d_aabb_rigids->GetGPUVirtualAddress()); // t3
+		if (static_count > 0) {
+			sh->cmd_list->SetComputeRootShaderResourceView(5, state->d_aabb_statics->GetGPUVirtualAddress()); // t4
+		} else {
+			sh->cmd_list->SetComputeRootShaderResourceView(5, sh->d_rigids->GetGPUVirtualAddress());
+		}
+
+		// u1: potential_pairs, u2: pair_count
+		sh->cmd_list->SetComputeRootUnorderedAccessView(8, state->d_potential_pairs->GetGPUVirtualAddress());
+		sh->cmd_list->SetComputeRootUnorderedAccessView(9, state->d_pair_count->GetGPUVirtualAddress());
+
+		// Set unneeded UAVs to dummy
+		sh->cmd_list->SetComputeRootUnorderedAccessView(7, sh->d_col_count->GetGPUVirtualAddress()); // u0
 
 		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Broad Dispatch");
 		sh->cmd_list->Dispatch(grid_size, 1, 1);
@@ -247,13 +293,13 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 		gb_broad.SyncAfter = D3D12_BARRIER_SYNC_COPY | D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 		gb_broad.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
 		gb_broad.AccessAfter = D3D12_BARRIER_ACCESS_COPY_SOURCE |
-							   D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+							   D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
+							   D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
 
 		D3D12_BARRIER_GROUP bg_broad = {};
 		bg_broad.Type = D3D12_BARRIER_TYPE_GLOBAL;
 		bg_broad.NumBarriers = 1;
 		bg_broad.pGlobalBarriers = &gb_broad;
-
 		sh->cmd_list->Barrier(1, &bg_broad);
 
 		sh->cmd_list->CopyBufferRegion(state->rb_pair_count, 0, state->d_pair_count, 0,
@@ -279,31 +325,30 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 
 		if (enable_profiling) dx_profile_step(&prof, sh, "gap_narrow");
 
+		// --- Narrow Phase ---
 		if (pair_count > 0) {
 			sh->cmd_list->SetComputeRootSignature(state->root_sig);
 			sh->cmd_list->SetPipelineState(state->pso_narrow);
 
-			constants[3] = pair_count;
-			sh->cmd_list->SetComputeRoot32BitConstants(0, 4, constants, 0);
-			sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress());
-			if (static_count > 0) {
-				sh->cmd_list->SetComputeRootShaderResourceView(
-					2, sh->d_statics->GetGPUVirtualAddress());
-			} else {
-				sh->cmd_list->SetComputeRootShaderResourceView(
-					2, sh->d_rigids->GetGPUVirtualAddress());
-			}
+			constants[4] = pair_count;
+			sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
 
-			sh->cmd_list->SetComputeRootShaderResourceView(
-				3, state->d_potential_pairs->GetGPUVirtualAddress());
-			sh->cmd_list->SetComputeRootUnorderedAccessView(
-				4, state->d_potential_pairs->GetGPUVirtualAddress());
-			sh->cmd_list->SetComputeRootUnorderedAccessView(
-				5, state->d_pair_count->GetGPUVirtualAddress());
-			sh->cmd_list->SetComputeRootUnorderedAccessView(
-				6, sh->d_collisions->GetGPUVirtualAddress());
-			sh->cmd_list->SetComputeRootUnorderedAccessView(
-				7, sh->d_col_count->GetGPUVirtualAddress());
+			sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
+			if (static_count > 0) {
+				sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_statics->GetGPUVirtualAddress()); // t1
+			} else {
+				sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress());
+			}
+			sh->cmd_list->SetComputeRootShaderResourceView(3, sh->d_shapes->GetGPUVirtualAddress()); // t2
+			sh->cmd_list->SetComputeRootShaderResourceView(6, state->d_potential_pairs->GetGPUVirtualAddress()); // t5
+
+			// Dummy unneeded UAVs for Narrow
+			sh->cmd_list->SetComputeRootUnorderedAccessView(7, sh->d_col_count->GetGPUVirtualAddress()); // u0
+			sh->cmd_list->SetComputeRootUnorderedAccessView(8, sh->d_col_count->GetGPUVirtualAddress()); // u1
+			sh->cmd_list->SetComputeRootUnorderedAccessView(9, sh->d_col_count->GetGPUVirtualAddress()); // u2
+
+			sh->cmd_list->SetComputeRootUnorderedAccessView(10, sh->d_collisions->GetGPUVirtualAddress()); // u3
+			sh->cmd_list->SetComputeRootUnorderedAccessView(11, sh->d_col_count->GetGPUVirtualAddress()); // u4
 
 			PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 255), "Phase: Narrow Dispatch");
 			uint32_t narrow_grid_size = (pair_count + block_size - 1) / block_size;
@@ -323,7 +368,6 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 		bg_count.Type = D3D12_BARRIER_TYPE_GLOBAL;
 		bg_count.NumBarriers = 1;
 		bg_count.pGlobalBarriers = &gb_count;
-
 		sh->cmd_list->Barrier(1, &bg_count);
 
 		sh->cmd_list->CopyBufferRegion(sh->rb_col_count, 0, sh->d_col_count, 0, sizeof(uint32_t));

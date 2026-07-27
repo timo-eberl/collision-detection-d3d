@@ -1,8 +1,13 @@
+struct dx_entity {
+	float3 position;
+	uint shape_type;
+	float4 rotation;
+	uint shape_index;
+	uint3 pad;
+};
+
 struct dx_shape {
-	float3 p_a;
-	float radius;
-	float3 p_b;
-	uint type;
+	float4 data;
 };
 
 struct dx_potential_pair {
@@ -10,6 +15,15 @@ struct dx_potential_pair {
 	uint b_index;
 	uint b_type;
 	uint pad;
+};
+
+struct packed_aabb {
+	float min_x;
+	float max_x;
+	float min_y;
+	float max_y;
+	float min_z;
+	float max_z;
 };
 
 struct dx_collision {
@@ -24,43 +38,118 @@ struct dx_collision {
 };
 
 cbuffer Constants : register(b0) {
+	uint item_count;
 	uint rigid_count;
 	uint static_count;
 	uint max_collisions;
-	uint pair_count; // Number of items in the potential pairs list
+	uint pair_count;
 };
 
-StructuredBuffer<dx_shape> rigids : register(t0);
-StructuredBuffer<dx_shape> statics : register(t1);
-StructuredBuffer<dx_potential_pair> potential_pairs_srv : register(t2);
+StructuredBuffer<dx_entity> entities_srv : register(t0);
+StructuredBuffer<dx_entity> statics_srv : register(t1);
+StructuredBuffer<dx_shape> shapes_srv : register(t2);
+StructuredBuffer<packed_aabb> aabb_rigids_srv : register(t3);
+StructuredBuffer<packed_aabb> aabb_statics_srv : register(t4);
+StructuredBuffer<dx_potential_pair> potential_pairs_srv : register(t5);
 
-RWStructuredBuffer<dx_potential_pair> potential_pairs_uav : register(u0);
-RWStructuredBuffer<uint> pair_count_uav : register(u1);
+RWStructuredBuffer<packed_aabb> aabb_uav : register(u0);
+RWStructuredBuffer<dx_potential_pair> potential_pairs_uav : register(u1);
+RWStructuredBuffer<uint> pair_count_uav : register(u2);
+RWStructuredBuffer<dx_collision> collisions_uav : register(u3);
+RWStructuredBuffer<uint> col_count_uav : register(u4);
 
-RWStructuredBuffer<dx_collision> collisions : register(u2);
-RWStructuredBuffer<uint> col_count_uav : register(u3);
-
-struct aabb {
-	float3 min_p;
-	float3 max_p;
-};
-
-aabb compute_aabb(dx_shape s) {
-	aabb box;
-	if (s.type == 0) {
-		box.min_p = s.p_a - s.radius;
-		box.max_p = s.p_a + s.radius;
-	} else {
-		box.min_p = min(s.p_a, s.p_b) - s.radius;
-		box.max_p = max(s.p_a, s.p_b) + s.radius;
-	}
-	return box;
+float3 rotate_vector(float3 v, float4 q) {
+	float3 q_xyz = q.xyz;
+	float3 t = 2.0f * cross(q_xyz, v);
+	return v + q.w * t + cross(q_xyz, t);
 }
 
-bool aabb_overlap(aabb a, aabb b) {
-	return a.max_p.x >= b.min_p.x && a.min_p.x <= b.max_p.x &&
-	       a.max_p.y >= b.min_p.y && a.min_p.y <= b.max_p.y &&
-	       a.max_p.z >= b.min_p.z && a.min_p.z <= b.max_p.z;
+[numthreads(256, 1, 1)]
+void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
+	uint i = DTid.x;
+	if (i >= item_count) return;
+
+	dx_entity e = entities_srv[i];
+	dx_shape s = shapes_srv[e.shape_index];
+
+	packed_aabb box;
+	if (e.shape_type == 0) {
+		float radius = s.data.x;
+		box.min_x = e.position.x - radius;
+		box.max_x = e.position.x + radius;
+		box.min_y = e.position.y - radius;
+		box.max_y = e.position.y + radius;
+		box.min_z = e.position.z - radius;
+		box.max_z = e.position.z + radius;
+	} else if (e.shape_type == 1) {
+		float half_height = s.data.x;
+		float radius = s.data.y;
+		float3 up = rotate_vector(float3(0.0f, 1.0f, 0.0f), e.rotation);
+		float3 p_a = e.position + up * half_height;
+		float3 p_b = e.position - up * half_height;
+		float3 min_p = min(p_a, p_b) - radius;
+		float3 max_p = max(p_a, p_b) + radius;
+		box.min_x = min_p.x; box.max_x = max_p.x;
+		box.min_y = min_p.y; box.max_y = max_p.y;
+		box.min_z = min_p.z; box.max_z = max_p.z;
+	} else {
+		float3 extents = s.data.xyz;
+		float3 a0 = rotate_vector(float3(1.0f, 0.0f, 0.0f), e.rotation);
+		float3 a1 = rotate_vector(float3(0.0f, 1.0f, 0.0f), e.rotation);
+		float3 a2 = rotate_vector(float3(0.0f, 0.0f, 1.0f), e.rotation);
+		float3 half_size = abs(a0) * extents.x + abs(a1) * extents.y + abs(a2) * extents.z;
+		box.min_x = e.position.x - half_size.x;
+		box.max_x = e.position.x + half_size.x;
+		box.min_y = e.position.y - half_size.y;
+		box.max_y = e.position.y + half_size.y;
+		box.min_z = e.position.z - half_size.z;
+		box.max_z = e.position.z + half_size.z;
+	}
+	aabb_uav[i] = box;
+}
+
+bool aabb_overlap(packed_aabb a, packed_aabb b) {
+	return a.max_x >= b.min_x && a.min_x <= b.max_x &&
+	       a.max_y >= b.min_y && a.min_y <= b.max_y &&
+	       a.max_z >= b.min_z && a.min_z <= b.max_z;
+}
+
+[numthreads(256, 1, 1)]
+void cs_broad_phase(uint3 DTid : SV_DispatchThreadID) {
+	uint i = DTid.x;
+	if (i >= rigid_count) return;
+
+	packed_aabb box_i = aabb_rigids_srv[i];
+
+	for (uint j = i + 1; j < rigid_count; ++j) {
+		if (aabb_overlap(box_i, aabb_rigids_srv[j])) {
+			uint idx;
+			InterlockedAdd(pair_count_uav[0], 1, idx);
+			if (idx < max_collisions) {
+				dx_potential_pair p;
+				p.a_index = i;
+				p.b_index = j;
+				p.b_type = 1;
+				p.pad = 0;
+				potential_pairs_uav[idx] = p;
+			}
+		}
+	}
+
+	for (uint k = 0; k < static_count; ++k) {
+		if (aabb_overlap(box_i, aabb_statics_srv[k])) {
+			uint idx;
+			InterlockedAdd(pair_count_uav[0], 1, idx);
+			if (idx < max_collisions) {
+				dx_potential_pair p;
+				p.a_index = i;
+				p.b_index = k;
+				p.b_type = 0;
+				p.pad = 0;
+				potential_pairs_uav[idx] = p;
+			}
+		}
+	}
 }
 
 float3 closest_point_on_segment(float3 p, float3 a, float3 b) {
@@ -73,9 +162,6 @@ float3 closest_point_on_segment(float3 p, float3 a, float3 b) {
 	return a + ab * t;
 }
 
-// Calculates the shortest distance between two 3D line segments by solving a parameterized
-// linear system for variables s and t. The results are clamped to [0, 1] to ensure the closest
-// points fall strictly on the bounded segments.
 void closest_points_between_segments(float3 p1, float3 q1, float3 p2, float3 q2, 
                                      out float3 c1, out float3 c2) {
 	float3 d1 = q1 - p1;
@@ -125,7 +211,34 @@ void closest_points_between_segments(float3 p1, float3 q1, float3 p2, float3 q2,
 	c2 = p2 + d2 * t;
 }
 
-bool collision_test_sphere_sphere(dx_shape a, dx_shape b, out dx_collision result) {
+struct col_shape {
+	float3 p_a;
+	float radius;
+	float3 p_b;
+	uint type;
+};
+
+col_shape get_col_shape(dx_entity e, dx_shape s) {
+	col_shape cs;
+	cs.type = e.shape_type;
+	if (e.shape_type == 0) {
+		cs.p_a = e.position;
+		cs.radius = s.data.x;
+		cs.p_b = e.position;
+	} else if (e.shape_type == 1) {
+		float3 up = rotate_vector(float3(0.0f, 1.0f, 0.0f), e.rotation);
+		cs.p_a = e.position + up * s.data.x;
+		cs.p_b = e.position - up * s.data.x;
+		cs.radius = s.data.y;
+	} else {
+		cs.p_a = e.position;
+		cs.p_b = e.position;
+		cs.radius = 0.0f;
+	}
+	return cs;
+}
+
+bool collision_test_sphere_sphere(col_shape a, col_shape b, out dx_collision result) {
 	result = (dx_collision)0;
 
 	float radius_sum = a.radius + b.radius;
@@ -149,7 +262,7 @@ bool collision_test_sphere_sphere(dx_shape a, dx_shape b, out dx_collision resul
 	return true;
 }
 
-bool collision_test_sphere_capsule(dx_shape a, dx_shape b, out dx_collision result) {
+bool collision_test_sphere_capsule(col_shape a, col_shape b, out dx_collision result) {
 	result = (dx_collision)0;
 
 	float3 closest_on_cap = closest_point_on_segment(a.p_a, b.p_a, b.p_b);
@@ -175,7 +288,7 @@ bool collision_test_sphere_capsule(dx_shape a, dx_shape b, out dx_collision resu
 	return true;
 }
 
-bool collision_test_capsule_capsule(dx_shape a, dx_shape b, out dx_collision result) {
+bool collision_test_capsule_capsule(col_shape a, col_shape b, out dx_collision result) {
 	result = (dx_collision)0;
 
 	float3 closest_a, closest_b;
@@ -202,24 +315,41 @@ bool collision_test_capsule_capsule(dx_shape a, dx_shape b, out dx_collision res
 	return true;
 }
 
-bool evaluate_narrow_phase(dx_shape a, dx_shape b, out dx_collision result) {
+bool collision_test_sphere_obb(col_shape a, col_shape b, out dx_collision result) {
+	result = (dx_collision)0;
+	// TODO implement
+	return false;
+}
+
+bool collision_test_capsule_obb(col_shape a, col_shape b, out dx_collision result) {
+	result = (dx_collision)0;
+	// TODO implement
+	return false;
+}
+
+bool collision_test_obb_obb(col_shape a, col_shape b, out dx_collision result) {
+	result = (dx_collision)0;
+	// TODO implement
+	return false;
+}
+
+bool evaluate_narrow_phase(col_shape a, col_shape b, out dx_collision result) {
 	bool swapped = false;
 	
-	if (a.type == 1 && b.type == 0) {
-		dx_shape temp_shape = a;
+	if (a.type > b.type) {
+		col_shape temp_shape = a;
 		a = b;
 		b = temp_shape;
 		swapped = true;
 	}
 
 	bool hit = false;
-	if (a.type == 0 && b.type == 0) {
-		hit = collision_test_sphere_sphere(a, b, result);
-	} else if (a.type == 0 && b.type == 1) {
-		hit = collision_test_sphere_capsule(a, b, result);
-	} else {
-		hit = collision_test_capsule_capsule(a, b, result);
-	}
+	if (a.type == 0 && b.type == 0) hit = collision_test_sphere_sphere(a, b, result);
+	else if (a.type == 0 && b.type == 1) hit = collision_test_sphere_capsule(a, b, result);
+	else if (a.type == 1 && b.type == 1) hit = collision_test_capsule_capsule(a, b, result);
+	else if (a.type == 0 && b.type == 2) hit = collision_test_sphere_obb(a, b, result);
+	else if (a.type == 1 && b.type == 2) hit = collision_test_capsule_obb(a, b, result);
+	else if (a.type == 2 && b.type == 2) hit = collision_test_obb_obb(a, b, result);
 
 	if (swapped && hit) {
 		result.normal = -result.normal;
@@ -232,70 +362,35 @@ bool evaluate_narrow_phase(dx_shape a, dx_shape b, out dx_collision result) {
 }
 
 [numthreads(256, 1, 1)]
-void cs_broad_phase(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= rigid_count) return;
-
-	dx_shape shape_i = rigids[i];
-	aabb box_i = compute_aabb(shape_i);
-
-	for (uint j = i + 1; j < rigid_count; ++j) {
-		dx_shape shape_j = rigids[j];
-		if (aabb_overlap(box_i, compute_aabb(shape_j))) {
-			uint idx;
-			InterlockedAdd(pair_count_uav[0], 1, idx);
-			if (idx < max_collisions) {
-				dx_potential_pair p;
-				p.a_index = i;
-				p.b_index = j;
-				p.b_type = 1;
-				p.pad = 0;
-				potential_pairs_uav[idx] = p;
-			}
-		}
-	}
-
-	for (uint k = 0; k < static_count; ++k) {
-		dx_shape shape_k = statics[k];
-		if (aabb_overlap(box_i, compute_aabb(shape_k))) {
-			uint idx;
-			InterlockedAdd(pair_count_uav[0], 1, idx);
-			if (idx < max_collisions) {
-				dx_potential_pair p;
-				p.a_index = i;
-				p.b_index = k;
-				p.b_type = 0;
-				p.pad = 0;
-				potential_pairs_uav[idx] = p;
-			}
-		}
-	}
-}
-
-[numthreads(256, 1, 1)]
 void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
 	uint i = DTid.x;
 	if (i >= pair_count) return;
 
 	dx_potential_pair p = potential_pairs_srv[i];
 	
-	dx_shape shape_a = rigids[p.a_index];
-	dx_shape shape_b;
+	dx_entity e_a = entities_srv[p.a_index];
+	dx_entity e_b;
 	if (p.b_type == 1) {
-		shape_b = rigids[p.b_index];
+		e_b = entities_srv[p.b_index];
 	} else {
-		shape_b = statics[p.b_index];
+		e_b = statics_srv[p.b_index];
 	}
 
+	dx_shape s_a = shapes_srv[e_a.shape_index];
+	dx_shape s_b = shapes_srv[e_b.shape_index];
+
+	col_shape cs_a = get_col_shape(e_a, s_a);
+	col_shape cs_b = get_col_shape(e_b, s_b);
+
 	dx_collision c;
-	if (evaluate_narrow_phase(shape_a, shape_b, c)) {
+	if (evaluate_narrow_phase(cs_a, cs_b, c)) {
 		uint idx;
 		InterlockedAdd(col_count_uav[0], 1, idx);
 		if (idx < max_collisions) {
 			c.a_index = p.a_index;
 			c.b_index = p.b_index;
 			c.b_type = p.b_type;
-			collisions[idx] = c;
+			collisions_uav[idx] = c;
 		}
 	}
 }

@@ -105,8 +105,10 @@ extern "C" void dx_shared_state_destroy(dx_shared_state* s) {
 
 	if (s->up_rigids) s->up_rigids->Release();
 	if (s->up_statics) s->up_statics->Release();
+	if (s->up_shapes) s->up_shapes->Release();
 	if (s->d_rigids) s->d_rigids->Release();
 	if (s->d_statics) s->d_statics->Release();
+	if (s->d_shapes) s->d_shapes->Release();
 	if (s->d_collisions) s->d_collisions->Release();
 	if (s->d_col_count) s->d_col_count->Release();
 	if (s->rb_collisions) s->rb_collisions->Release();
