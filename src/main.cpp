@@ -115,7 +115,6 @@ int main() {
 				// Order the types
 				uint32_t t1 = a_type < b_type ? a_type : b_type;
 				uint32_t t2 = a_type > b_type ? a_type : b_type;
-				if (t1 == 1 && t2 == 2) skip_collision = true; // Capsule-Box
 				if (t1 == 2 && t2 == 2) skip_collision = true; // Box-Box
 			}
 			if (skip_collision) { i++; continue; }

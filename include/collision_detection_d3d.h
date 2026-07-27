@@ -17,6 +17,7 @@ typedef union {
 	struct { float radius; uint32_t pad[3]; } sphere;
 	struct { float half_height; float radius; uint32_t pad[2]; } capsule;
 	struct { float half_extents[3]; uint32_t pad; } obb;
+	float data[4];
 } dx_shape; // 16 bytes
 
 typedef struct {
