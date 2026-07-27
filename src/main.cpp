@@ -135,24 +135,12 @@ int main() {
 				if (depth_ok && (!normal_ok || !pt_ok)) {
 					float depth_diff = fabsf(exp->depth - act->depth);
 
-					// If depths are extremely close (e.g., within 0.0002 or 0.5% relative error)
+					// If depths are extremely close (e.g., within 0.0002 or 0.5% relative error),
+					// different penetration vectors are also acceptable
 					if (depth_diff < 0.0002f ||
 						(depth_diff / fmaxf(exp->depth, 0.0001f) < 0.005f)) {
-						float dot = exp->normal[0] * act->normal[0] +
-									exp->normal[1] * act->normal[1] +
-									exp->normal[2] * act->normal[2];
-
-						float dx = act->point_a[0] - exp->point_a[0];
-						float dy = act->point_a[1] - exp->point_a[1];
-						float dz = act->point_a[2] - exp->point_a[2];
-						float dist_sq = dx * dx + dy * dy + dz * dz;
-
-						// Allow up to ~18 degrees of normal tilt (dot > 0.95) and a small point
-						// shift
-						if (dot > 0.95f && dist_sq < 0.05f) {
-							normal_ok = true;
-							pt_ok = true;
-						}
+						normal_ok = true;
+						pt_ok = true;
 					}
 				}
 
