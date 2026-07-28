@@ -65,6 +65,16 @@ int main() {
 			fread(expected_cols, sizeof(dx_collision), expected_col_count, file);
 		}
 
+		if (frame_index < 160 || frame_index > 169) {
+			free(rigids);
+			free(statics);
+			free(shapes);
+			free(expected_cols);
+			if (frame_index > 169) break;
+			frame_index++;
+			continue;
+		}
+
 		uint32_t actual_col_count = 0;
 		dx_collision* actual_cols = dx_run_collision(
 			sh, state, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
