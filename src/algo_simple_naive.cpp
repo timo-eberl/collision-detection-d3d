@@ -150,233 +150,224 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 	uint32_t grid_size = (rigid_count + block_size - 1) / block_size;
 	dx_profile prof = {0};
 
-	for (int attempt = 0; attempt < 2; ++attempt) {
-		// Only profile first attempt to not confuse the profiler
-		bool enable_profiling = (attempt > 0) ? false : true;
-		shared_ensure_buffers(sh, rigid_count, static_count, shape_count, cols_needed);
-		shared_write_inputs(sh->up_rigids, rigids, rigid_count, sh->up_statics, statics,
-							static_count, statics_changed, sh->up_shapes, shapes, shape_count);
+	shared_ensure_buffers(sh, rigid_count, static_count, shape_count, cols_needed);
+	shared_write_inputs(sh->up_rigids, rigids, rigid_count, sh->up_statics, statics,
+						static_count, statics_changed, sh->up_shapes, shapes, shape_count);
 
-		// Compute the maximum capacity using the actual allocated size of the pairs buffer
-		uint32_t kernel_max = (sh->d_collisions_size > (size_t)UINT32_MAX)
-								  ? UINT32_MAX : (uint32_t)sh->d_collisions_size;
+	// Compute the maximum capacity using the actual allocated size of the pairs buffer
+	uint32_t kernel_max = (sh->d_collisions_size > (size_t)UINT32_MAX)
+							  ? UINT32_MAX : (uint32_t)sh->d_collisions_size;
 
-		ensure_dx_buffer(sh->device, &state->d_aabb_rigids, &state->d_aabb_rigids_size, rigid_count,
-						 sizeof(packed_aabb), D3D12_HEAP_TYPE_DEFAULT,
+	ensure_dx_buffer(sh->device, &state->d_aabb_rigids, &state->d_aabb_rigids_size, rigid_count,
+					 sizeof(packed_aabb), D3D12_HEAP_TYPE_DEFAULT,
+					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
+	if (static_count > 0) {
+		ensure_dx_buffer(sh->device, &state->d_aabb_statics, &state->d_aabb_statics_size,
+						 static_count, sizeof(packed_aabb), D3D12_HEAP_TYPE_DEFAULT,
 						 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-		if (static_count > 0) {
-			ensure_dx_buffer(sh->device, &state->d_aabb_statics, &state->d_aabb_statics_size,
-							 static_count, sizeof(packed_aabb), D3D12_HEAP_TYPE_DEFAULT,
-							 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-		}
-		ensure_dx_buffer(sh->device, &state->d_potential_pairs, &state->d_potential_pairs_size,
-						 kernel_max, sizeof(dx_potential_pair), D3D12_HEAP_TYPE_DEFAULT,
-						 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-		ensure_dx_buffer(sh->device, &state->d_pair_count, &state->d_pair_count_size,
-						 1, sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
-						 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-		ensure_dx_buffer(sh->device, &state->rb_pair_count, &state->rb_pair_count_size,
-						 1, sizeof(uint32_t), D3D12_HEAP_TYPE_READBACK,
-						 D3D12_RESOURCE_FLAG_NONE, 1.0f);
+	}
+	ensure_dx_buffer(sh->device, &state->d_potential_pairs, &state->d_potential_pairs_size,
+					 kernel_max, sizeof(dx_potential_pair), D3D12_HEAP_TYPE_DEFAULT,
+					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
+	ensure_dx_buffer(sh->device, &state->d_pair_count, &state->d_pair_count_size,
+					 1, sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
+					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
+	ensure_dx_buffer(sh->device, &state->rb_pair_count, &state->rb_pair_count_size,
+					 1, sizeof(uint32_t), D3D12_HEAP_TYPE_READBACK,
+					 D3D12_RESOURCE_FLAG_NONE, 1.0f);
 
-		if (enable_profiling) dx_profile_begin(&prof, sh);
-		PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 0, 0), "Phase: Upload Memory");
+	dx_profile_begin(&prof, sh);
+	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 0, 0), "Phase: Upload Memory");
 
-		sh->cmd_list->CopyBufferRegion(sh->d_rigids, 0, sh->up_rigids, 0,
-									   rigid_count * sizeof(dx_entity));
-		sh->cmd_list->CopyBufferRegion(sh->d_shapes, 0, sh->up_shapes, 0,
-									   shape_count * sizeof(dx_shape));
-		if (statics_changed && static_count > 0) {
-			sh->cmd_list->CopyBufferRegion(sh->d_statics, 0, sh->up_statics, 0,
-										   static_count * sizeof(dx_entity));
-		}
-		sh->cmd_list->CopyBufferRegion(sh->d_col_count, 0, sh->up_zero, 0, sizeof(uint32_t));
-		sh->cmd_list->CopyBufferRegion(state->d_pair_count, 0, sh->up_zero, 0, sizeof(uint32_t));
+	sh->cmd_list->CopyBufferRegion(sh->d_rigids, 0, sh->up_rigids, 0,
+								   rigid_count * sizeof(dx_entity));
+	sh->cmd_list->CopyBufferRegion(sh->d_shapes, 0, sh->up_shapes, 0,
+								   shape_count * sizeof(dx_shape));
+	if (statics_changed && static_count > 0) {
+		sh->cmd_list->CopyBufferRegion(sh->d_statics, 0, sh->up_statics, 0,
+									   static_count * sizeof(dx_entity));
+	}
+	sh->cmd_list->CopyBufferRegion(sh->d_col_count, 0, sh->up_zero, 0, sizeof(uint32_t));
+	sh->cmd_list->CopyBufferRegion(state->d_pair_count, 0, sh->up_zero, 0, sizeof(uint32_t));
 
-		// Transition inputs to SRV and outputs to UAV
-		D3D12_GLOBAL_BARRIER gb_upload = {};
-		gb_upload.SyncBefore = D3D12_BARRIER_SYNC_COPY;
-		gb_upload.SyncAfter = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
-		gb_upload.AccessBefore = D3D12_BARRIER_ACCESS_COPY_DEST;
-		gb_upload.AccessAfter = D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
-								D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+	// Transition inputs to SRV and outputs to UAV
+	D3D12_GLOBAL_BARRIER gb_upload = {};
+	gb_upload.SyncBefore = D3D12_BARRIER_SYNC_COPY;
+	gb_upload.SyncAfter = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+	gb_upload.AccessBefore = D3D12_BARRIER_ACCESS_COPY_DEST;
+	gb_upload.AccessAfter = D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
+							D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
 
-		D3D12_BARRIER_GROUP bg_upload = {};
-		bg_upload.Type = D3D12_BARRIER_TYPE_GLOBAL;
-		bg_upload.NumBarriers = 1;
-		bg_upload.pGlobalBarriers = &gb_upload;
-		sh->cmd_list->Barrier(1, &bg_upload);
+	D3D12_BARRIER_GROUP bg_upload = {};
+	bg_upload.Type = D3D12_BARRIER_TYPE_GLOBAL;
+	bg_upload.NumBarriers = 1;
+	bg_upload.pGlobalBarriers = &gb_upload;
+	sh->cmd_list->Barrier(1, &bg_upload);
 
-		PIXEndEvent(sh->cmd_list);
-		if (enable_profiling) dx_profile_step(&prof, sh, "upload");
+	PIXEndEvent(sh->cmd_list);
+	dx_profile_step(&prof, sh, "upload");
 
-		// --- AABB Prep Phase ---
+	// --- AABB Prep Phase ---
+	sh->cmd_list->SetComputeRootSignature(state->root_sig);
+	sh->cmd_list->SetPipelineState(state->pso_aabb_prep);
+
+	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 255, 0), "Phase: AABB Prep");
+
+	uint32_t constants[5] = { rigid_count, rigid_count, static_count, kernel_max, 0 };
+	sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
+
+	// Common Bindings
+	sh->cmd_list->SetComputeRootShaderResourceView(3, sh->d_shapes->GetGPUVirtualAddress()); // t2
+
+	// Dummy bindings for unused slots to avoid validation warnings
+	sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress()); // t1
+	sh->cmd_list->SetComputeRootShaderResourceView(4, sh->d_rigids->GetGPUVirtualAddress()); // t3
+	sh->cmd_list->SetComputeRootShaderResourceView(5, sh->d_rigids->GetGPUVirtualAddress()); // t4
+	sh->cmd_list->SetComputeRootShaderResourceView(6, sh->d_rigids->GetGPUVirtualAddress()); // t5
+	sh->cmd_list->SetComputeRootUnorderedAccessView(8, sh->d_col_count->GetGPUVirtualAddress()); // u1
+	sh->cmd_list->SetComputeRootUnorderedAccessView(9, sh->d_col_count->GetGPUVirtualAddress()); // u2
+	sh->cmd_list->SetComputeRootUnorderedAccessView(10, sh->d_col_count->GetGPUVirtualAddress()); // u3
+	sh->cmd_list->SetComputeRootUnorderedAccessView(11, sh->d_col_count->GetGPUVirtualAddress()); // u4
+
+	// Prep Rigids
+	sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
+	sh->cmd_list->SetComputeRootUnorderedAccessView(7, state->d_aabb_rigids->GetGPUVirtualAddress()); // u0
+	sh->cmd_list->Dispatch(grid_size, 1, 1);
+
+	// Prep Statics
+	if (statics_changed && static_count > 0) {
+		constants[0] = static_count;
+		sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
+		sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_statics->GetGPUVirtualAddress()); // t0
+		sh->cmd_list->SetComputeRootUnorderedAccessView(7, state->d_aabb_statics->GetGPUVirtualAddress()); // u0
+		uint32_t static_grid = (static_count + block_size - 1) / block_size;
+		sh->cmd_list->Dispatch(static_grid, 1, 1);
+	}
+
+	PIXEndEvent(sh->cmd_list);
+	dx_profile_step(&prof, sh, "aabb_prep");
+
+	D3D12_GLOBAL_BARRIER gb_prep = {};
+	gb_prep.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+	gb_prep.SyncAfter = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+	gb_prep.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+	gb_prep.AccessAfter = D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
+						  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+
+	D3D12_BARRIER_GROUP bg_prep = {};
+	bg_prep.Type = D3D12_BARRIER_TYPE_GLOBAL;
+	bg_prep.NumBarriers = 1;
+	bg_prep.pGlobalBarriers = &gb_prep;
+	sh->cmd_list->Barrier(1, &bg_prep);
+
+	// --- Broad Phase ---
+	sh->cmd_list->SetPipelineState(state->pso_broad);
+
+	constants[0] = 0; // item_count not used here
+	sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
+
+	sh->cmd_list->SetComputeRootShaderResourceView(4, state->d_aabb_rigids->GetGPUVirtualAddress()); // t3
+	if (static_count > 0) {
+		sh->cmd_list->SetComputeRootShaderResourceView(5, state->d_aabb_statics->GetGPUVirtualAddress()); // t4
+	} else {
+		sh->cmd_list->SetComputeRootShaderResourceView(5, sh->d_rigids->GetGPUVirtualAddress());
+	}
+
+	// u1: potential_pairs, u2: pair_count
+	sh->cmd_list->SetComputeRootUnorderedAccessView(8, state->d_potential_pairs->GetGPUVirtualAddress());
+	sh->cmd_list->SetComputeRootUnorderedAccessView(9, state->d_pair_count->GetGPUVirtualAddress());
+
+	// Set unneeded UAVs to dummy
+	sh->cmd_list->SetComputeRootUnorderedAccessView(7, sh->d_col_count->GetGPUVirtualAddress()); // u0
+
+	PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Broad Dispatch");
+	sh->cmd_list->Dispatch(grid_size, 1, 1);
+	PIXEndEvent(sh->cmd_list);
+	dx_profile_step(&prof, sh, "broad");
+
+	D3D12_GLOBAL_BARRIER gb_broad = {};
+	gb_broad.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+	gb_broad.SyncAfter = D3D12_BARRIER_SYNC_COPY | D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+	gb_broad.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+	gb_broad.AccessAfter = D3D12_BARRIER_ACCESS_COPY_SOURCE |
+						   D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
+						   D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+
+	D3D12_BARRIER_GROUP bg_broad = {};
+	bg_broad.Type = D3D12_BARRIER_TYPE_GLOBAL;
+	bg_broad.NumBarriers = 1;
+	bg_broad.pGlobalBarriers = &gb_broad;
+	sh->cmd_list->Barrier(1, &bg_broad);
+
+	sh->cmd_list->CopyBufferRegion(state->rb_pair_count, 0, state->d_pair_count, 0,
+								   sizeof(uint32_t));
+
+	execute_and_wait(sh);
+
+	uint32_t pair_count = 0;
+	void* mapped = nullptr;
+	state->rb_pair_count->Map(0, nullptr, &mapped);
+	pair_count = *(uint32_t*)mapped;
+	state->rb_pair_count->Unmap(0, nullptr);
+
+	if (pair_count > kernel_max) {
+		fprintf(stderr, "[dx12] WARNING: Capacity exceeded (%u > %u). Truncating...\n",
+				pair_count, kernel_max);
+		pair_count = kernel_max;
+	}
+
+	dx_profile_step(&prof, sh, "gap_narrow");
+
+	// --- Narrow Phase ---
+	if (pair_count > 0) {
 		sh->cmd_list->SetComputeRootSignature(state->root_sig);
-		sh->cmd_list->SetPipelineState(state->pso_aabb_prep);
+		sh->cmd_list->SetPipelineState(state->pso_narrow);
 
-		PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 255, 0), "Phase: AABB Prep");
-
-		uint32_t constants[5] = { rigid_count, rigid_count, static_count, kernel_max, 0 };
+		constants[4] = pair_count;
 		sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
 
-		// Common Bindings
+		sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
+		if (static_count > 0) {
+			sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_statics->GetGPUVirtualAddress()); // t1
+		} else {
+			sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress());
+		}
 		sh->cmd_list->SetComputeRootShaderResourceView(3, sh->d_shapes->GetGPUVirtualAddress()); // t2
+		sh->cmd_list->SetComputeRootShaderResourceView(6, state->d_potential_pairs->GetGPUVirtualAddress()); // t5
 
-		// Dummy bindings for unused slots to avoid validation warnings
-		sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress()); // t1
-		sh->cmd_list->SetComputeRootShaderResourceView(4, sh->d_rigids->GetGPUVirtualAddress()); // t3
-		sh->cmd_list->SetComputeRootShaderResourceView(5, sh->d_rigids->GetGPUVirtualAddress()); // t4
-		sh->cmd_list->SetComputeRootShaderResourceView(6, sh->d_rigids->GetGPUVirtualAddress()); // t5
+		// Dummy unneeded UAVs for Narrow
+		sh->cmd_list->SetComputeRootUnorderedAccessView(7, sh->d_col_count->GetGPUVirtualAddress()); // u0
 		sh->cmd_list->SetComputeRootUnorderedAccessView(8, sh->d_col_count->GetGPUVirtualAddress()); // u1
 		sh->cmd_list->SetComputeRootUnorderedAccessView(9, sh->d_col_count->GetGPUVirtualAddress()); // u2
-		sh->cmd_list->SetComputeRootUnorderedAccessView(10, sh->d_col_count->GetGPUVirtualAddress()); // u3
+
+		sh->cmd_list->SetComputeRootUnorderedAccessView(10, sh->d_collisions->GetGPUVirtualAddress()); // u3
 		sh->cmd_list->SetComputeRootUnorderedAccessView(11, sh->d_col_count->GetGPUVirtualAddress()); // u4
 
-		// Prep Rigids
-		sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
-		sh->cmd_list->SetComputeRootUnorderedAccessView(7, state->d_aabb_rigids->GetGPUVirtualAddress()); // u0
-		sh->cmd_list->Dispatch(grid_size, 1, 1);
-
-		// Prep Statics
-		if (statics_changed && static_count > 0) {
-			constants[0] = static_count;
-			sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
-			sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_statics->GetGPUVirtualAddress()); // t0
-			sh->cmd_list->SetComputeRootUnorderedAccessView(7, state->d_aabb_statics->GetGPUVirtualAddress()); // u0
-			uint32_t static_grid = (static_count + block_size - 1) / block_size;
-			sh->cmd_list->Dispatch(static_grid, 1, 1);
-		}
-
+		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 255), "Phase: Narrow Dispatch");
+		uint32_t narrow_grid_size = (pair_count + block_size - 1) / block_size;
+		sh->cmd_list->Dispatch(narrow_grid_size, 1, 1);
 		PIXEndEvent(sh->cmd_list);
-		if (enable_profiling) dx_profile_step(&prof, sh, "aabb_prep");
-
-		D3D12_GLOBAL_BARRIER gb_prep = {};
-		gb_prep.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
-		gb_prep.SyncAfter = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
-		gb_prep.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
-		gb_prep.AccessAfter = D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
-							  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
-
-		D3D12_BARRIER_GROUP bg_prep = {};
-		bg_prep.Type = D3D12_BARRIER_TYPE_GLOBAL;
-		bg_prep.NumBarriers = 1;
-		bg_prep.pGlobalBarriers = &gb_prep;
-		sh->cmd_list->Barrier(1, &bg_prep);
-
-		// --- Broad Phase ---
-		sh->cmd_list->SetPipelineState(state->pso_broad);
-
-		constants[0] = 0; // item_count not used here
-		sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
-
-		sh->cmd_list->SetComputeRootShaderResourceView(4, state->d_aabb_rigids->GetGPUVirtualAddress()); // t3
-		if (static_count > 0) {
-			sh->cmd_list->SetComputeRootShaderResourceView(5, state->d_aabb_statics->GetGPUVirtualAddress()); // t4
-		} else {
-			sh->cmd_list->SetComputeRootShaderResourceView(5, sh->d_rigids->GetGPUVirtualAddress());
-		}
-
-		// u1: potential_pairs, u2: pair_count
-		sh->cmd_list->SetComputeRootUnorderedAccessView(8, state->d_potential_pairs->GetGPUVirtualAddress());
-		sh->cmd_list->SetComputeRootUnorderedAccessView(9, state->d_pair_count->GetGPUVirtualAddress());
-
-		// Set unneeded UAVs to dummy
-		sh->cmd_list->SetComputeRootUnorderedAccessView(7, sh->d_col_count->GetGPUVirtualAddress()); // u0
-
-		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Broad Dispatch");
-		sh->cmd_list->Dispatch(grid_size, 1, 1);
-		PIXEndEvent(sh->cmd_list);
-		if (enable_profiling) dx_profile_step(&prof, sh, "broad");
-
-		D3D12_GLOBAL_BARRIER gb_broad = {};
-		gb_broad.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
-		gb_broad.SyncAfter = D3D12_BARRIER_SYNC_COPY | D3D12_BARRIER_SYNC_COMPUTE_SHADING;
-		gb_broad.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
-		gb_broad.AccessAfter = D3D12_BARRIER_ACCESS_COPY_SOURCE |
-							   D3D12_BARRIER_ACCESS_SHADER_RESOURCE |
-							   D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
-
-		D3D12_BARRIER_GROUP bg_broad = {};
-		bg_broad.Type = D3D12_BARRIER_TYPE_GLOBAL;
-		bg_broad.NumBarriers = 1;
-		bg_broad.pGlobalBarriers = &gb_broad;
-		sh->cmd_list->Barrier(1, &bg_broad);
-
-		sh->cmd_list->CopyBufferRegion(state->rb_pair_count, 0, state->d_pair_count, 0,
-									   sizeof(uint32_t));
-
-		execute_and_wait(sh);
-
-		uint32_t pair_count = 0;
-		void* mapped = nullptr;
-		state->rb_pair_count->Map(0, nullptr, &mapped);
-		pair_count = *(uint32_t*)mapped;
-		state->rb_pair_count->Unmap(0, nullptr);
-
-		// The narrow phase can never produce more hits than there are potential pairs, so we only
-		// need to check and resize against the pair_count here to guarantee safety.
-		if (pair_count > kernel_max) {
-			cols_needed = pair_count;
-			fprintf(stderr, "[dx12] WARNING: Capacity exceeded (%u > %u). "
-							"Re-running with the exact required capacity.\n",
-					pair_count, kernel_max);
-			continue;
-		}
-
-		if (enable_profiling) dx_profile_step(&prof, sh, "gap_narrow");
-
-		// --- Narrow Phase ---
-		if (pair_count > 0) {
-			sh->cmd_list->SetComputeRootSignature(state->root_sig);
-			sh->cmd_list->SetPipelineState(state->pso_narrow);
-
-			constants[4] = pair_count;
-			sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
-
-			sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
-			if (static_count > 0) {
-				sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_statics->GetGPUVirtualAddress()); // t1
-			} else {
-				sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress());
-			}
-			sh->cmd_list->SetComputeRootShaderResourceView(3, sh->d_shapes->GetGPUVirtualAddress()); // t2
-			sh->cmd_list->SetComputeRootShaderResourceView(6, state->d_potential_pairs->GetGPUVirtualAddress()); // t5
-
-			// Dummy unneeded UAVs for Narrow
-			sh->cmd_list->SetComputeRootUnorderedAccessView(7, sh->d_col_count->GetGPUVirtualAddress()); // u0
-			sh->cmd_list->SetComputeRootUnorderedAccessView(8, sh->d_col_count->GetGPUVirtualAddress()); // u1
-			sh->cmd_list->SetComputeRootUnorderedAccessView(9, sh->d_col_count->GetGPUVirtualAddress()); // u2
-
-			sh->cmd_list->SetComputeRootUnorderedAccessView(10, sh->d_collisions->GetGPUVirtualAddress()); // u3
-			sh->cmd_list->SetComputeRootUnorderedAccessView(11, sh->d_col_count->GetGPUVirtualAddress()); // u4
-
-			PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 255), "Phase: Narrow Dispatch");
-			uint32_t narrow_grid_size = (pair_count + block_size - 1) / block_size;
-			sh->cmd_list->Dispatch(narrow_grid_size, 1, 1);
-			PIXEndEvent(sh->cmd_list);
-		}
-
-		if (enable_profiling) dx_profile_step(&prof, sh, "narrow");
-
-		D3D12_GLOBAL_BARRIER gb_count = {};
-		gb_count.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
-		gb_count.SyncAfter = D3D12_BARRIER_SYNC_COPY;
-		gb_count.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
-		gb_count.AccessAfter = D3D12_BARRIER_ACCESS_COPY_SOURCE;
-
-		D3D12_BARRIER_GROUP bg_count = {};
-		bg_count.Type = D3D12_BARRIER_TYPE_GLOBAL;
-		bg_count.NumBarriers = 1;
-		bg_count.pGlobalBarriers = &gb_count;
-		sh->cmd_list->Barrier(1, &bg_count);
-
-		sh->cmd_list->CopyBufferRegion(sh->rb_col_count, 0, sh->d_col_count, 0, sizeof(uint32_t));
-
-		execute_and_wait(sh);
-
-		count = shared_read_count(sh->rb_col_count);
-		break;
 	}
+
+	dx_profile_step(&prof, sh, "narrow");
+
+	D3D12_GLOBAL_BARRIER gb_count = {};
+	gb_count.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+	gb_count.SyncAfter = D3D12_BARRIER_SYNC_COPY;
+	gb_count.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+	gb_count.AccessAfter = D3D12_BARRIER_ACCESS_COPY_SOURCE;
+
+	D3D12_BARRIER_GROUP bg_count = {};
+	bg_count.Type = D3D12_BARRIER_TYPE_GLOBAL;
+	bg_count.NumBarriers = 1;
+	bg_count.pGlobalBarriers = &gb_count;
+	sh->cmd_list->Barrier(1, &bg_count);
+
+	sh->cmd_list->CopyBufferRegion(sh->rb_col_count, 0, sh->d_col_count, 0, sizeof(uint32_t));
+
+	execute_and_wait(sh);
+
+	count = shared_read_count(sh->rb_col_count);
 
 	dx_collision_compact* h_cols = nullptr;
 	if (count > 0) {
