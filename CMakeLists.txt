@@ -99,17 +99,52 @@ add_custom_command(
 			${CMAKE_CURRENT_SOURCE_DIR}/src/collision_math.hlsli
 )
 
+# Compile shader (algo_execute_indirect)
+add_custom_command(
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_aabb_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_broad_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_prep_shader.h
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_aabb_prep -T cs_6_0 -O3
+		-Vn algo_execute_indirect_aabb_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_aabb_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_broad_phase -T cs_6_0 -O3
+		-Vn algo_execute_indirect_broad_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_broad_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_narrow_phase -T cs_6_0 -O3
+		-Vn algo_execute_indirect_narrow_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_dispatch_prep -T cs_6_0 -O3
+		-Vn algo_execute_indirect_prep_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_prep_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
+			${CMAKE_CURRENT_SOURCE_DIR}/src/collision_math.hlsli
+)
+
 # Library
 add_library(${PROJECT_NAME}
 	src/shared_state.cpp
 	src/algo_simple_naive.cpp
 	src/algo_simple_binned.cpp
+	src/algo_execute_indirect.cpp
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_aabb_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_broad_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_narrow_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_aabb_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_broad_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_narrow_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_aabb_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_broad_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_prep_shader.h
 )
 
 target_include_directories(${PROJECT_NAME}

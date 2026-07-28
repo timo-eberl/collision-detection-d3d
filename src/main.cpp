@@ -89,6 +89,7 @@ int main() {
 	dx_shared_state* sh = dx_shared_state_create();
 	dx_state_simple_naive* state_naive = dx_state_simple_naive_create(sh);
 	dx_state_simple_binned* state_binned = dx_state_simple_binned_create(sh);
+	dx_state_execute_indirect* state_indirect = dx_state_execute_indirect_create(sh);
 
 	uint32_t frame_index = 0;
 	uint32_t counts[4];
@@ -132,29 +133,40 @@ int main() {
 			sh, state_binned, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
 			&binned_col_count);
 
+		uint32_t indirect_col_count = 0;
+		dx_collision_compact* indirect_compact = dx_run_execute_indirect(
+			sh, state_indirect, rigids, rigid_count, statics, static_count, shapes, shape_count,
+			true, &indirect_col_count);
+
 		// GPU vs GPU comparison (sort, then memcmp)
 		bool pipeline_match = true;
-		if (naive_col_count != binned_col_count) {
+		if (naive_col_count != binned_col_count || binned_col_count != indirect_col_count) {
 			fprintf(stderr,
-				"❌ Frame %u FAILED: Pipeline mismatch! Naive count (%u) != Binned count (%u)\n",
-				frame_index, naive_col_count, binned_col_count);
+				"❌ Frame %u FAILED: Pipeline mismatch! "
+				"Naive (%u) vs Binned (%u) vs Indirect (%u)\n",
+				frame_index, naive_col_count, binned_col_count, indirect_col_count);
 			pipeline_match = false;
 		} else if (binned_col_count > 0) {
 			qsort(naive_compact, naive_col_count, sizeof(dx_collision_compact),
 				  compare_compact_collisions);
 			qsort(binned_compact, binned_col_count, sizeof(dx_collision_compact),
 				  compare_compact_collisions);
+			qsort(indirect_compact, indirect_col_count, sizeof(dx_collision_compact),
+				  compare_compact_collisions);
 			if (memcmp(naive_compact, binned_compact,
-					   binned_col_count * sizeof(dx_collision_compact)) != 0) {
+					   binned_col_count * sizeof(dx_collision_compact)) != 0 ||
+				memcmp(binned_compact, indirect_compact,
+					   indirect_col_count * sizeof(dx_collision_compact)) != 0) {
 				fprintf(stderr,
-						"❌ Frame %u FAILED: Pipeline mismatch! GPU algorithms returned different "
-						"data.\n",
+						"❌ Frame %u FAILED: Pipeline mismatch! GPU algorithms returned "
+						"different data.\n",
 						frame_index);
 				pipeline_match = false;
 			}
 		}
 
 		if (naive_compact) free(naive_compact);
+		if (indirect_compact) free(indirect_compact);
 
 		if (!pipeline_match) {
 			// Cancel further validation if the GPU algorithms don't even agree with each other
@@ -354,6 +366,7 @@ int main() {
 
 	dx_state_simple_naive_destroy(state_naive);
 	dx_state_simple_binned_destroy(state_binned);
+	dx_state_execute_indirect_destroy(state_indirect);
 	dx_shared_state_destroy(sh);
 
 	fclose(file);
