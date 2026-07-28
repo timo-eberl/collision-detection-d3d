@@ -7,9 +7,10 @@
 Implement a broad phase and narrow phase on GPU. We'll support spheres, capsules and oriented bounding boxes (OBBs). This gives us 6 different combinations (sphere-sphere, sphere-capsule, sphere-box, capsule-capsule, capsule-box, box-box). Their narrow phase implementation differ significantly in complexity, which creates a heterogeneous workload that benefits from dynamic work distribution.
 
 Compare the performance of multiple versions:
-- Simple: Broad phase -> Potential pairs list -> (Optional: Sort list by type) -> Simple narrow phase (uber shader approach)
-- ExecuteIndirect: Broad phase -> Potential pairs list -> Sort / Bin list by type -> ExecuteIndirect different narrow phase shaders
-- Work Graphs: Broad phase -> Launch different narrow phase shaders
+- Simple Naive:    Broad phase -> Potential pairs list -> Narrow phase (uber shader)
+- Simple Binned:   Broad phase -> Potential binned pairs list -> Dispatch Narrow Phase (same uber shader) multiple times
+- ExecuteIndirect: Broad phase -> Potential binned pairs list -> ExecuteIndirect different narrow phase shaders
+- Work Graphs:     Broad phase -> Launch different narrow phase shaders
 
 ## Instructions
 

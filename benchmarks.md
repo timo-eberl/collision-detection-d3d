@@ -35,4 +35,11 @@ Benchmarks use 100.000 bodies simulated over 200 frames on an AMD Radeon RX 9070
 
 [dx12] simple (avg over 10) upload=0.721ms [0.720-0.723] aabb_prep=0.044ms [0.043-0.045] broad=54.342ms [52.311-56.684] gap_narrow=0.263ms [0.150-0.768] narrow=0.558ms [0.545-0.583] gap_readback=0.131ms [0.109-0.157] readback=2.714ms [2.501-2.802] total=58.772ms cpu_total=61.447ms [59.103-63.957]
 
+## 43cca3a1ec1c84c677aa53725150b8aec6cba25d (reduce output to 32 bytes)
+
 [dx12] simple (avg over 10) upload=0.721ms [0.720-0.724] aabb_prep=0.044ms [0.043-0.044] broad=53.993ms [52.462-56.315] gap_narrow=0.239ms [0.153-0.665] narrow=0.555ms [0.543-0.575] gap_readback=0.123ms [0.110-0.156] readback=1.360ms [1.254-1.404] total=57.035ms cpu_total=58.536ms [56.875-61.288]
+
+## b97c1b18dc68bfd1e1847d3a26f97b13f5a94cf4 (binning added)
+
+[dx12] simple_naive (avg over 10) upload=0.865ms [0.720-2.150] aabb_prep=0.043ms [0.042-0.044] broad=55.889ms [52.476-62.549] gap_narrow=0.207ms [0.144-0.587] narrow=0.545ms [0.520-0.558] gap_readback=0.138ms [0.092-0.389] readback=1.360ms [1.254-1.404] total=59.048ms cpu_total=60.756ms [56.851-67.738]
+[dx12] simple_binned (avg over 10) upload=0.862ms [0.720-2.137] aabb_prep=0.044ms [0.043-0.044] broad=54.116ms [52.278-63.841] gap_narrow=0.177ms [0.129-0.289] narrow=0.405ms [0.385-0.437] gap_readback=0.121ms [0.105-0.134] readback=1.360ms [1.254-1.405] total=57.085ms cpu_total=58.494ms [56.195-69.384]
