@@ -55,6 +55,14 @@ int compare_collisions(const void* a, const void* b) {
 	return (int)ca->b_index - (int)cb->b_index;
 }
 
+int compare_compact_collisions(const void* a, const void* b) {
+	const dx_collision_compact* ca = (const dx_collision_compact*)a;
+	const dx_collision_compact* cb = (const dx_collision_compact*)b;
+
+	if (ca->a_index != cb->a_index) return (int)ca->a_index - (int)cb->a_index;
+	return (int)ca->b_index - (int)cb->b_index;
+}
+
 bool float_eq_approx(float a, float b, float epsilon = 0.001f) {
 	return fabs(a - b) < epsilon;
 }
@@ -114,15 +122,54 @@ int main() {
 			continue;
 		}
 
-		uint32_t actual_col_count = 0;
-
-		dx_run_simple_naive(
+		uint32_t naive_col_count = 0;
+		dx_collision_compact* naive_compact = dx_run_simple_naive(
 			sh, state_naive, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
-			&actual_col_count);
-		dx_collision_compact* actual_compact = dx_run_simple_binned(
-			sh, state_binned, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
-			&actual_col_count);
+			&naive_col_count);
 
+		uint32_t binned_col_count = 0;
+		dx_collision_compact* binned_compact = dx_run_simple_binned(
+			sh, state_binned, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
+			&binned_col_count);
+
+		// GPU vs GPU comparison (sort, then memcmp)
+		bool pipeline_match = true;
+		if (naive_col_count != binned_col_count) {
+			fprintf(stderr,
+				"❌ Frame %u FAILED: Pipeline mismatch! Naive count (%u) != Binned count (%u)\n",
+				frame_index, naive_col_count, binned_col_count);
+			pipeline_match = false;
+		} else if (binned_col_count > 0) {
+			qsort(naive_compact, naive_col_count, sizeof(dx_collision_compact),
+				  compare_compact_collisions);
+			qsort(binned_compact, binned_col_count, sizeof(dx_collision_compact),
+				  compare_compact_collisions);
+			if (memcmp(naive_compact, binned_compact,
+					   binned_col_count * sizeof(dx_collision_compact)) != 0) {
+				fprintf(stderr,
+						"❌ Frame %u FAILED: Pipeline mismatch! GPU algorithms returned different "
+						"data.\n",
+						frame_index);
+				pipeline_match = false;
+			}
+		}
+
+		if (naive_compact) free(naive_compact);
+
+		if (!pipeline_match) {
+			// Cancel further validation if the GPU algorithms don't even agree with each other
+			if (binned_compact) free(binned_compact);
+			free(rigids);
+			free(statics);
+			free(shapes);
+			free(expected_cols);
+			frame_index++;
+			continue;
+		}
+
+		// GPU vs CPU comparison
+		uint32_t actual_col_count = binned_col_count;
+		dx_collision_compact* actual_compact = binned_compact;
 		dx_collision_full* actual_cols = nullptr;
 		if (actual_col_count > 0) {
 			actual_cols = (dx_collision_full*)malloc(
