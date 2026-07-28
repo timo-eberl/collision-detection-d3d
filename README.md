@@ -23,5 +23,5 @@ cmake -S . -B build_release/ -DCMAKE_BUILD_TYPE=Release -DTICS_ENABLE_DEBUG_VIEW
 - [x] Also do transformations (don't just take pre transformed collision data)
 - [x] Add box colliders
 - [ ] Use groupshared memory for shape data
-- [ ] Reduce output to 32 byte: `uint32_t a_index; uint32_t b_index; float depth; float point_a[3]; float normal[2];`
+- [x] Reduce output to 32 byte: `uint32_t a_index; uint32_t b_index; float depth; float point_a[3]; float normal[2];`
 - [ ] Implement a proper broad phase

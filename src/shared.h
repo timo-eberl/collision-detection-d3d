@@ -213,12 +213,13 @@ static void shared_ensure_buffers(dx_shared_state* sh, uint32_t rigid_count, uin
 					 D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, 1.0f);
 
 	ensure_dx_buffer(sh->device, &sh->d_collisions, &sh->d_collisions_size, max_collisions,
-					 sizeof(dx_collision), D3D12_HEAP_TYPE_DEFAULT,
+					 sizeof(dx_collision_compact), D3D12_HEAP_TYPE_DEFAULT,
 					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 	// Allocate the readback buffer for the same capacity upfront. Could be done later with only the
 	// actually required size, but who cares about memory anymore, right?
 	ensure_dx_buffer(sh->device, &sh->rb_collisions, &sh->rb_collisions_size, max_collisions,
-					 sizeof(dx_collision), D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE,1.0f);
+					 sizeof(dx_collision_compact), D3D12_HEAP_TYPE_READBACK,
+					 D3D12_RESOURCE_FLAG_NONE, 1.0f);
 
 	if (sh->d_rigids) sh->d_rigids->SetName(L"Rigids_Default_Buffer");
 	if (sh->d_statics) sh->d_statics->SetName(L"Statics_Default_Buffer");
@@ -259,11 +260,11 @@ static uint32_t shared_read_count(ID3D12Resource* rb_col_count) {
 }
 
 // Maps the readback buffer, allocates a host array, and copies the final collision structs.
-static dx_collision* shared_read_collisions(ID3D12Resource* rb_collisions, uint32_t count) {
-	dx_collision* h_cols = (dx_collision*)malloc(count * sizeof(dx_collision));
+static dx_collision_compact* shared_read_collisions(ID3D12Resource* rb_collisions, uint32_t count) {
+	dx_collision_compact* h_cols = (dx_collision_compact*)malloc(count * sizeof(dx_collision_compact));
 	void* mapped = nullptr;
 	rb_collisions->Map(0, nullptr, &mapped);
-	memcpy(h_cols, mapped, count * sizeof(dx_collision));
+	memcpy(h_cols, mapped, count * sizeof(dx_collision_compact));
 	rb_collisions->Unmap(0, nullptr);
 	return h_cols;
 }

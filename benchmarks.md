@@ -34,3 +34,5 @@ Benchmarks use 100.000 bodies simulated over 200 frames on an AMD Radeon RX 9070
 ## ee1516065114da65ba1ed88e9f79ee03420583a7
 
 [dx12] simple (avg over 10) upload=0.721ms [0.720-0.723] aabb_prep=0.044ms [0.043-0.045] broad=54.342ms [52.311-56.684] gap_narrow=0.263ms [0.150-0.768] narrow=0.558ms [0.545-0.583] gap_readback=0.131ms [0.109-0.157] readback=2.714ms [2.501-2.802] total=58.772ms cpu_total=61.447ms [59.103-63.957]
+
+[dx12] simple (avg over 10) upload=0.721ms [0.720-0.724] aabb_prep=0.044ms [0.043-0.044] broad=53.993ms [52.462-56.315] gap_narrow=0.239ms [0.153-0.665] narrow=0.555ms [0.543-0.575] gap_readback=0.123ms [0.110-0.156] readback=1.360ms [1.254-1.404] total=57.035ms cpu_total=58.536ms [56.875-61.288]

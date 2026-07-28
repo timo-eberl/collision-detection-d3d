@@ -131,11 +131,11 @@ extern "C" void dx_state_collision_destroy(dx_state_collision* s) {
 	free(s);
 }
 
-extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collision* state,
-										  const dx_entity* rigids, uint32_t rigid_count,
-										  const dx_entity* statics, uint32_t static_count,
-										  const dx_shape* shapes, uint32_t shape_count,
-										  bool statics_changed, uint32_t* out_count) {
+extern "C" dx_collision_compact* dx_run_collision(dx_shared_state* sh, dx_state_collision* state,
+												  const dx_entity* rigids, uint32_t rigid_count,
+												  const dx_entity* statics, uint32_t static_count,
+												  const dx_shape* shapes, uint32_t shape_count,
+												  bool statics_changed, uint32_t* out_count) {
 	*out_count = 0;
 	if (rigid_count == 0) return nullptr;
 
@@ -378,7 +378,7 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 		break;
 	}
 
-	dx_collision* h_cols = nullptr;
+	dx_collision_compact* h_cols = nullptr;
 	if (count > 0) {
 		dx_profile_step(&prof, sh, "gap_readback");
 		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 0, 255), "Phase: Readback");
@@ -387,7 +387,7 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 		// decayed to COMMON access. CopyBufferRegion will implicitly promote it to COPY_SOURCE.
 		// Success -> Readback the actual collision pairs
 		sh->cmd_list->CopyBufferRegion(sh->rb_collisions, 0, sh->d_collisions, 0,
-									   count * sizeof(dx_collision));
+									   count * sizeof(dx_collision_compact));
 
 		PIXEndEvent(sh->cmd_list);
 		dx_profile_step(&prof, sh, "readback");
@@ -406,7 +406,7 @@ extern "C" dx_collision* dx_run_collision(dx_shared_state* sh, dx_state_collisio
 		dx_profile_acc_init(&prof_acc);
 		prof_init = true;
 	}
-	dx_profile_log_frame(&prof, "simple");
+	// dx_profile_log_frame(&prof, "simple");
 	dx_profile_log(&prof, &prof_acc, "simple", 10);
 
 	return h_cols;

@@ -8,9 +8,47 @@
 #include <windows.h>
 #endif
 
+inline float sign_not_zero(float v) {
+	return v >= 0.0f ? 1.0f : -1.0f;
+}
+
+void decode_octahedral(const float* enc, float* n) {
+	float x = enc[0];
+	float y = enc[1];
+	// Calculate z based on the octahedron's geometric properties
+	float z = 1.0f - fabsf(x) - fabsf(y);
+	
+	// If the vector points into the lower hemisphere, un-fold the xy coordinates
+	if (z < 0.0f) {
+		float old_x = x;
+		x = (1.0f - fabsf(y)) * sign_not_zero(old_x);
+		y = (1.0f - fabsf(old_x)) * sign_not_zero(y);
+	}
+	
+	float len = sqrtf(x * x + y * y + z * z);
+	if (len > 0.00001f) {
+		n[0] = x / len;
+		n[1] = y / len;
+		n[2] = z / len;
+	} else {
+		n[0] = 0.0f; n[1] = 1.0f; n[2] = 0.0f;
+	}
+}
+
+typedef struct {
+	uint32_t a_index;
+	uint32_t b_index;
+	uint32_t b_type; // 0 = Static, 1 = Rigid
+	float depth;
+	float point_a[3];
+	float point_b[3];
+	float normal[3];
+	uint32_t pad[3];
+} dx_collision_full; // 64 bytes
+
 int compare_collisions(const void* a, const void* b) {
-	const dx_collision* ca = (const dx_collision*)a;
-	const dx_collision* cb = (const dx_collision*)b;
+	const dx_collision_full* ca = (const dx_collision_full*)a;
+	const dx_collision_full* cb = (const dx_collision_full*)b;
 
 	if (ca->a_index != cb->a_index) return (int)ca->a_index - (int)cb->a_index;
 	if (ca->b_type != cb->b_type) return (int)ca->b_type - (int)cb->b_type;
@@ -55,14 +93,14 @@ int main() {
 		dx_entity* rigids = (dx_entity*)malloc(rigid_count * sizeof(dx_entity));
 		dx_entity* statics = (dx_entity*)malloc(static_count * sizeof(dx_entity));
 		dx_shape* shapes = (dx_shape*)malloc(shape_count * sizeof(dx_shape));
-		dx_collision* expected_cols = (dx_collision*)malloc(
-			expected_col_count * sizeof(dx_collision));
+		dx_collision_full* expected_cols = (dx_collision_full*)malloc(
+			expected_col_count * sizeof(dx_collision_full));
 
 		if (rigid_count > 0) fread(rigids, sizeof(dx_entity), rigid_count, file);
 		if (static_count > 0) fread(statics, sizeof(dx_entity), static_count, file);
 		if (shape_count > 0) fread(shapes, sizeof(dx_shape), shape_count, file);
 		if (expected_col_count > 0) {
-			fread(expected_cols, sizeof(dx_collision), expected_col_count, file);
+			fread(expected_cols, sizeof(dx_collision_full), expected_col_count, file);
 		}
 
 		if (frame_index < 160 || frame_index > 169) {
@@ -76,15 +114,49 @@ int main() {
 		}
 
 		uint32_t actual_col_count = 0;
-		dx_collision* actual_cols = dx_run_collision(
+		dx_collision_compact* actual_compact = dx_run_collision(
 			sh, state, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
 			&actual_col_count);
 
+		dx_collision_full* actual_cols = nullptr;
+		if (actual_col_count > 0) {
+			actual_cols = (dx_collision_full*)malloc(
+				actual_col_count * sizeof(dx_collision_full));
+			
+			for (uint32_t j = 0; j < actual_col_count; ++j) {
+				dx_collision_compact* comp = &actual_compact[j];
+				dx_collision_full* full = &actual_cols[j];
+				
+				full->a_index = comp->a_index;
+				if (comp->b_index >= rigid_count) {
+					full->b_index = comp->b_index - rigid_count;
+					full->b_type = 0;
+				} else {
+					full->b_index = comp->b_index;
+					full->b_type = 1;
+				}
+				
+				full->depth = comp->depth;
+				full->point_a[0] = comp->point_a[0];
+				full->point_a[1] = comp->point_a[1];
+				full->point_a[2] = comp->point_a[2];
+				
+				decode_octahedral(comp->normal, full->normal);
+				
+				full->point_b[0] = full->point_a[0] + full->normal[0] * full->depth;
+				full->point_b[1] = full->point_a[1] + full->normal[1] * full->depth;
+				full->point_b[2] = full->point_a[2] + full->normal[2] * full->depth;
+				
+				full->pad[0] = 0; full->pad[1] = 0; full->pad[2] = 0;
+			}
+			free(actual_compact);
+		}
+
 		if (expected_col_count > 0) {
-			qsort(expected_cols, expected_col_count, sizeof(dx_collision), compare_collisions);
+			qsort(expected_cols, expected_col_count, sizeof(dx_collision_full), compare_collisions);
 		}
 		if (actual_col_count > 0) {
-			qsort(actual_cols, actual_col_count, sizeof(dx_collision), compare_collisions);
+			qsort(actual_cols, actual_col_count, sizeof(dx_collision_full), compare_collisions);
 		}
 
 		auto print_body_details = [&](uint32_t a_idx, uint32_t b_idx, uint32_t b_type) {
@@ -113,8 +185,8 @@ int main() {
 		// If we find a pair that exists in one list but not the other, we check its depth. If the
 		// depth is close to zero, we ignore it
 		while (i < expected_col_count || j < actual_col_count) {
-			dx_collision* exp = (i < expected_col_count) ? &expected_cols[i] : nullptr;
-			dx_collision* act = (j < actual_col_count) ? &actual_cols[j] : nullptr;
+			dx_collision_full* exp = (i < expected_col_count) ? &expected_cols[i] : nullptr;
+			dx_collision_full* act = (j < actual_col_count) ? &actual_cols[j] : nullptr;
 
 			int cmp = 0;
 			if (exp && act) cmp = compare_collisions(exp, act);

@@ -26,7 +26,7 @@ struct packed_aabb {
 	float max_z;
 };
 
-struct dx_collision {
+struct dx_collision_full {
 	uint a_index;
 	uint b_index;
 	uint b_type;
@@ -35,6 +35,14 @@ struct dx_collision {
 	float3 point_b;
 	float3 normal;
 	uint3 pad;
+};
+
+struct dx_collision_compact {
+	uint a_index;
+	uint b_index;
+	float depth;
+	float3 point_a;
+	float2 normal;
 };
 
 cbuffer Constants : register(b0) {
@@ -55,7 +63,7 @@ StructuredBuffer<dx_potential_pair> potential_pairs_srv : register(t5);
 RWStructuredBuffer<packed_aabb> aabb_uav : register(u0);
 RWStructuredBuffer<dx_potential_pair> potential_pairs_uav : register(u1);
 RWStructuredBuffer<uint> pair_count_uav : register(u2);
-RWStructuredBuffer<dx_collision> collisions_uav : register(u3);
+RWStructuredBuffer<dx_collision_compact> collisions_uav : register(u3);
 RWStructuredBuffer<uint> col_count_uav : register(u4);
 
 float3 rotate_vector(float3 v, float4 q) {
@@ -84,6 +92,17 @@ float3 world_to_local(float3 p, float3 pos, float4 rot) {
 
 float3 local_to_world(float3 p, float3 pos, float4 rot) {
 	return pos + rotate_vector(p, rot);
+}
+
+float2 sign_not_zero(float2 v) {
+	return float2((v.x >= 0.0f) ? 1.0f : -1.0f, (v.y >= 0.0f) ? 1.0f : -1.0f);
+}
+
+// Projects the sphere onto the octahedron, and then onto the xy plane
+float2 encode_octahedral(float3 v) {
+	float2 p = v.xy * (1.0f / (abs(v.x) + abs(v.y) + abs(v.z)));
+	// Reflect the folds of the lower hemisphere over the diagonals
+	return (v.z <= 0.0f) ? ((1.0f - abs(p.yx)) * sign_not_zero(p)) : p;
 }
 
 [numthreads(256, 1, 1)]
@@ -234,8 +253,8 @@ void closest_points_between_segments(float3 p1, float3 q1, float3 p2, float3 q2,
 }
 
 bool collision_test_sphere_sphere(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
-                                  out dx_collision result) {
-	result = (dx_collision)0;
+                                  out dx_collision_full result) {
+	result = (dx_collision_full)0;
 
 	float radius_a = s_a.data.x;
 	float radius_b = s_b.data.x;
@@ -262,8 +281,8 @@ bool collision_test_sphere_sphere(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx
 }
 
 bool collision_test_sphere_capsule(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
-                                   out dx_collision result) {
-	result = (dx_collision)0;
+                                   out dx_collision_full result) {
+	result = (dx_collision_full)0;
 
 	float radius_a = s_a.data.x;
 	float radius_b = s_b.data.y;
@@ -296,8 +315,8 @@ bool collision_test_sphere_capsule(dx_entity e_a, dx_shape s_a, dx_entity e_b, d
 }
 
 bool collision_test_capsule_capsule(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b,
-									out dx_collision result) {
-	result = (dx_collision)0;
+									out dx_collision_full result) {
+	result = (dx_collision_full)0;
 
 	float half_height_a = s_a.data.x;
 	float radius_a = s_a.data.y;
@@ -337,8 +356,8 @@ bool collision_test_capsule_capsule(dx_entity e_a, dx_shape s_a, dx_entity e_b, 
 }
 
 bool collision_test_sphere_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
-                               out dx_collision result) {
-	result = (dx_collision)0;
+                               out dx_collision_full result) {
+	result = (dx_collision_full)0;
 
 	float radius = s_a.data.x;
 	float3 extents = s_b.data.xyz;
@@ -483,8 +502,8 @@ bool test_capsule_box_axis(float3 axis, float3 ext, float3 A, float3 B, float r,
 }
 
 bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
-                                out dx_collision result) {
-	result = (dx_collision)0;
+                                out dx_collision_full result) {
+	result = (dx_collision_full)0;
 
 	float3 up_a = rotate_vector(float3(0.0f, 1.0f, 0.0f), e_a.rotation);
 	float3 world_a = e_a.position - up_a * s_a.data.x; 
@@ -652,8 +671,8 @@ bool test_edge_axis(float3 axis, float r_a, float r_b, float abs_t,
 }
 
 bool collision_test_obb_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
-                            out dx_collision result) {
-	result = (dx_collision)0;
+                            out dx_collision_full result) {
+	result = (dx_collision_full)0;
 
 	// B's position in A's local coordinate space
 	float3 T = world_to_local(e_b.position, e_a.position, e_a.rotation);
@@ -823,7 +842,7 @@ bool collision_test_obb_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape
 }
 
 bool evaluate_narrow_phase(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
-                           out dx_collision result) {
+                           out dx_collision_full result) {
 	bool swapped = false;
 	
 	if (e_a.shape_type > e_b.shape_type) {
@@ -881,15 +900,18 @@ void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
 	dx_shape s_a = shapes_srv[e_a.shape_index];
 	dx_shape s_b = shapes_srv[e_b.shape_index];
 
-	dx_collision c;
+	dx_collision_full c;
 	if (evaluate_narrow_phase(e_a, s_a, e_b, s_b, c)) {
 		uint idx;
 		InterlockedAdd(col_count_uav[0], 1, idx);
 		if (idx < max_collisions) {
-			c.a_index = p.a_index;
-			c.b_index = p.b_index;
-			c.b_type = p.b_type;
-			collisions_uav[idx] = c;
+			dx_collision_compact comp;
+			comp.a_index = p.a_index;
+			comp.b_index = (p.b_type == 0) ? (p.b_index + rigid_count) : p.b_index;
+			comp.depth = c.depth;
+			comp.point_a = c.point_a;
+			comp.normal = encode_octahedral(c.normal);
+			collisions_uav[idx] = comp;
 		}
 	}
 }
