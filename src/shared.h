@@ -42,7 +42,7 @@ struct dx_shared_state {
 	uint64_t fence_value;
 	void* fence_event;
 
-	// Input Upload Buffersy (on CPU, GPU writable)
+	// Input Upload Buffersy (on CPU, GPU readable)
 	ID3D12Resource* up_rigids;
 	size_t up_rigids_size;
 	ID3D12Resource* up_statics;
@@ -62,7 +62,7 @@ struct dx_shared_state {
 	ID3D12Resource* d_col_count;
 	size_t d_col_count_size;
 
-	// Readback Buffers (on CPU, GPU readable)
+	// Readback Buffers (on CPU, GPU writeable)
 	ID3D12Resource* rb_collisions;
 	size_t rb_collisions_size;
 	ID3D12Resource* rb_col_count;
