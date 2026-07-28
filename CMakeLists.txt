@@ -51,42 +51,65 @@ endif()
 
 message(STATUS "Using DXC: ${DXC_EXECUTABLE}")
 
-# Compile shader
+# Compile shader (algo_simple_naive)
 add_custom_command(
-	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_aabb_shader.h 
-	       ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_broad_shader.h 
-	       ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_narrow_shader.h
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_aabb_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_broad_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_narrow_shader.h
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_aabb_prep
-		-T cs_6_0
-		-O3
-		-Vn algo_simple_aabb_shader
-		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_aabb_shader.h
-		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple.hlsl
+		-E cs_aabb_prep -T cs_6_0 -O3
+		-Vn algo_simple_naive_aabb_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_aabb_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_naive.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_broad_phase
-		-T cs_6_0
-		-O3
-		-Vn algo_simple_broad_shader
-		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_broad_shader.h
-		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple.hlsl
+		-E cs_broad_phase -T cs_6_0 -O3
+		-Vn algo_simple_naive_broad_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_broad_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_naive.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_narrow_phase
-		-T cs_6_0
-		-O3
-		-Vn algo_simple_narrow_shader
-		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_narrow_shader.h
-		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple.hlsl
-	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple.hlsl
+		-E cs_narrow_phase -T cs_6_0 -O3
+		-Vn algo_simple_naive_narrow_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_narrow_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_naive.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_naive.hlsl
+			${CMAKE_CURRENT_SOURCE_DIR}/src/collision_math.hlsli
+)
+
+# Compile shader (algo_simple_binned)
+add_custom_command(
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_aabb_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_broad_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_narrow_shader.h
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_aabb_prep -T cs_6_0 -O3
+		-Vn algo_simple_binned_aabb_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_aabb_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_binned.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_broad_phase -T cs_6_0 -O3
+		-Vn algo_simple_binned_broad_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_broad_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_binned.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_narrow_phase -T cs_6_0 -O3
+		-Vn algo_simple_binned_narrow_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_narrow_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_binned.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_binned.hlsl
+			${CMAKE_CURRENT_SOURCE_DIR}/src/collision_math.hlsli
 )
 
 # Library
 add_library(${PROJECT_NAME}
 	src/shared_state.cpp
-	src/algo_simple.cpp
-	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_aabb_shader.h
-	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_broad_shader.h
-	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_narrow_shader.h
+	src/algo_simple_naive.cpp
+	src/algo_simple_binned.cpp
+	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_aabb_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_broad_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_narrow_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_aabb_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_broad_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_narrow_shader.h
 )
 
 target_include_directories(${PROJECT_NAME}

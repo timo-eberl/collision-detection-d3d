@@ -22,7 +22,7 @@ extern "C" dx_shared_state* dx_shared_state_create(void) {
 
 	IDXCoreAdapter* adapter = nullptr;
 	if (adapter_list->GetAdapterCount() > 0) {
-		hr = adapter_list->GetAdapter(1, IID_PPV_ARGS(&adapter));
+		hr = adapter_list->GetAdapter(0, IID_PPV_ARGS(&adapter));
 		if (SUCCEEDED(hr)) {
 			ID3D12Device* base_device = nullptr;
 			hr = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&base_device));
@@ -80,12 +80,12 @@ extern "C" dx_shared_state* dx_shared_state_create(void) {
 	s->fence_value = 0;
 	s->fence_event = dx_create_event();
 
-	// Allocate a persistent 4-byte buffer containing 0 to quickly reset atomic counters
-	ensure_dx_buffer(s->device, &s->up_zero, &s->up_zero_size, 1, sizeof(uint32_t),
+	// Allocate a persistent 24-byte buffer containing 0 to quickly reset atomic counters
+	ensure_dx_buffer(s->device, &s->up_zero, &s->up_zero_size, 6, sizeof(uint32_t),
 					 D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE, 1.0f);
 	void* p_zero;
 	s->up_zero->Map(0, nullptr, &p_zero);
-	*(uint32_t*)p_zero = 0;
+	memset(p_zero, 0, 6 * sizeof(uint32_t));
 	s->up_zero->Unmap(0, nullptr);
 	
 	return s;

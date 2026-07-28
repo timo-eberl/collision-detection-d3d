@@ -79,7 +79,8 @@ int main() {
 	}
 
 	dx_shared_state* sh = dx_shared_state_create();
-	dx_state_collision* state = dx_state_collision_create(sh);
+	dx_state_simple_naive* state_naive = dx_state_simple_naive_create(sh);
+	dx_state_simple_binned* state_binned = dx_state_simple_binned_create(sh);
 
 	uint32_t frame_index = 0;
 	uint32_t counts[4];
@@ -114,8 +115,12 @@ int main() {
 		}
 
 		uint32_t actual_col_count = 0;
-		dx_collision_compact* actual_compact = dx_run_collision(
-			sh, state, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
+
+		dx_run_simple_naive(
+			sh, state_naive, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
+			&actual_col_count);
+		dx_collision_compact* actual_compact = dx_run_simple_binned(
+			sh, state_binned, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
 			&actual_col_count);
 
 		dx_collision_full* actual_cols = nullptr;
@@ -300,7 +305,8 @@ int main() {
 		frame_index++;
 	}
 
-	dx_state_collision_destroy(state);
+	dx_state_simple_naive_destroy(state_naive);
+	dx_state_simple_binned_destroy(state_binned);
 	dx_shared_state_destroy(sh);
 
 	fclose(file);

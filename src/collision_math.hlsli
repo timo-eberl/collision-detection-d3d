@@ -45,27 +45,6 @@ struct dx_collision_compact {
 	float2 normal;
 };
 
-cbuffer Constants : register(b0) {
-	uint item_count;
-	uint rigid_count;
-	uint static_count;
-	uint max_collisions;
-	uint pair_count;
-};
-
-StructuredBuffer<dx_entity> entities_srv : register(t0);
-StructuredBuffer<dx_entity> statics_srv : register(t1);
-StructuredBuffer<dx_shape> shapes_srv : register(t2);
-StructuredBuffer<packed_aabb> aabb_rigids_srv : register(t3);
-StructuredBuffer<packed_aabb> aabb_statics_srv : register(t4);
-StructuredBuffer<dx_potential_pair> potential_pairs_srv : register(t5);
-
-RWStructuredBuffer<packed_aabb> aabb_uav : register(u0);
-RWStructuredBuffer<dx_potential_pair> potential_pairs_uav : register(u1);
-RWStructuredBuffer<uint> pair_count_uav : register(u2);
-RWStructuredBuffer<dx_collision_compact> collisions_uav : register(u3);
-RWStructuredBuffer<uint> col_count_uav : register(u4);
-
 float3 rotate_vector(float3 v, float4 q) {
 	float3 q_xyz = q.xyz;
 	float3 t = 2.0f * cross(q_xyz, v);
@@ -105,92 +84,10 @@ float2 encode_octahedral(float3 v) {
 	return (v.z <= 0.0f) ? ((1.0f - abs(p.yx)) * sign_not_zero(p)) : p;
 }
 
-[numthreads(256, 1, 1)]
-void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= item_count) return;
-
-	dx_entity e = entities_srv[i];
-	dx_shape s = shapes_srv[e.shape_index];
-
-	packed_aabb box;
-	if (e.shape_type == 0) {
-		float radius = s.data.x;
-		box.min_x = e.position.x - radius;
-		box.max_x = e.position.x + radius;
-		box.min_y = e.position.y - radius;
-		box.max_y = e.position.y + radius;
-		box.min_z = e.position.z - radius;
-		box.max_z = e.position.z + radius;
-	} else if (e.shape_type == 1) {
-		float half_height = s.data.x;
-		float radius = s.data.y;
-		float3 up = rotate_vector(float3(0.0f, 1.0f, 0.0f), e.rotation);
-		float3 p_a = e.position - up * half_height; // -up is p_a
-		float3 p_b = e.position + up * half_height; // +up is p_b
-		float3 min_p = min(p_a, p_b) - radius;
-		float3 max_p = max(p_a, p_b) + radius;
-		box.min_x = min_p.x; box.max_x = max_p.x;
-		box.min_y = min_p.y; box.max_y = max_p.y;
-		box.min_z = min_p.z; box.max_z = max_p.z;
-	} else {
-		float3 extents = s.data.xyz;
-		float3 a0 = rotate_vector(float3(1.0f, 0.0f, 0.0f), e.rotation);
-		float3 a1 = rotate_vector(float3(0.0f, 1.0f, 0.0f), e.rotation);
-		float3 a2 = rotate_vector(float3(0.0f, 0.0f, 1.0f), e.rotation);
-		float3 half_size = abs(a0) * extents.x + abs(a1) * extents.y + abs(a2) * extents.z;
-		box.min_x = e.position.x - half_size.x;
-		box.max_x = e.position.x + half_size.x;
-		box.min_y = e.position.y - half_size.y;
-		box.max_y = e.position.y + half_size.y;
-		box.min_z = e.position.z - half_size.z;
-		box.max_z = e.position.z + half_size.z;
-	}
-	aabb_uav[i] = box;
-}
-
 bool aabb_overlap(packed_aabb a, packed_aabb b) {
 	return a.max_x >= b.min_x && a.min_x <= b.max_x &&
 	       a.max_y >= b.min_y && a.min_y <= b.max_y &&
 	       a.max_z >= b.min_z && a.min_z <= b.max_z;
-}
-
-[numthreads(256, 1, 1)]
-void cs_broad_phase(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= rigid_count) return;
-
-	packed_aabb box_i = aabb_rigids_srv[i];
-
-	for (uint j = i + 1; j < rigid_count; ++j) {
-		if (aabb_overlap(box_i, aabb_rigids_srv[j])) {
-			uint idx;
-			InterlockedAdd(pair_count_uav[0], 1, idx);
-			if (idx < max_collisions) {
-				dx_potential_pair p;
-				p.a_index = i;
-				p.b_index = j;
-				p.b_type = 1;
-				p.pad = 0;
-				potential_pairs_uav[idx] = p;
-			}
-		}
-	}
-
-	for (uint k = 0; k < static_count; ++k) {
-		if (aabb_overlap(box_i, aabb_statics_srv[k])) {
-			uint idx;
-			InterlockedAdd(pair_count_uav[0], 1, idx);
-			if (idx < max_collisions) {
-				dx_potential_pair p;
-				p.a_index = i;
-				p.b_index = k;
-				p.b_type = 0;
-				p.pad = 0;
-				potential_pairs_uav[idx] = p;
-			}
-		}
-	}
 }
 
 float3 closest_point_on_segment(float3 p, float3 a, float3 b) {
@@ -252,14 +149,14 @@ void closest_points_between_segments(float3 p1, float3 q1, float3 p2, float3 q2,
 	c2 = p2 + d2 * t;
 }
 
-bool collision_test_sphere_sphere(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+bool collision_test_sphere_sphere(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b,
                                   out dx_collision_full result) {
 	result = (dx_collision_full)0;
 
 	float radius_a = s_a.data.x;
 	float radius_b = s_b.data.x;
 	float radius_sum = radius_a + radius_b;
-	
+
 	float3 delta = e_b.position - e_a.position;
 	float dist_sq = dot(delta, delta);
 
@@ -280,7 +177,7 @@ bool collision_test_sphere_sphere(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx
 	return true;
 }
 
-bool collision_test_sphere_capsule(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+bool collision_test_sphere_capsule(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b,
                                    out dx_collision_full result) {
 	result = (dx_collision_full)0;
 
@@ -355,7 +252,7 @@ bool collision_test_capsule_capsule(dx_entity e_a, dx_shape s_a, dx_entity e_b, 
 	return true;
 }
 
-bool collision_test_sphere_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+bool collision_test_sphere_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b,
                                out dx_collision_full result) {
 	result = (dx_collision_full)0;
 
@@ -407,7 +304,7 @@ bool collision_test_sphere_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_sh
 	// Convert local calculations back into world space
 	result.normal = rotate_vector(local_normal, e_b.rotation);
 	result.point_b = local_to_world(clamped, e_b.position, e_b.rotation);
-	
+
 	// The deepest penetrating point on the sphere lies opposite to the collision normal
 	result.point_a = e_a.position + result.normal * -radius;
 
@@ -426,7 +323,7 @@ float3 get_box_support_point(float3 ext, float3 pos, float4 rot, float3 dir) {
 	return local_to_world(local_support, pos, rot);
 }
 
-void get_box_support_edge(float3 ext, float3 pos, float4 rot, float3 dir, 
+void get_box_support_edge(float3 ext, float3 pos, float4 rot, float3 dir,
                           out float3 p1, out float3 p2) {
 	float3 local_dir = rotate_vector(dir, quat_inverse(rot));
 
@@ -459,8 +356,8 @@ void get_box_support_edge(float3 ext, float3 pos, float4 rot, float3 dir,
 	p2 = local_to_world(edge_end, pos, rot);
 }
 
-bool test_capsule_box_axis(float3 axis, float3 ext, float3 A, float3 B, float r, 
-                           inout float min_overlap, inout float3 best_axis, int type, 
+bool test_capsule_box_axis(float3 axis, float3 ext, float3 A, float3 B, float r,
+                           inout float min_overlap, inout float3 best_axis, int type,
                            inout int best_type) {
 	float len_sq = dot(axis, axis);
 	if (len_sq < 0.00001f) return true;
@@ -501,13 +398,13 @@ bool test_capsule_box_axis(float3 axis, float3 ext, float3 A, float3 B, float r,
 	return true;
 }
 
-bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b,
                                 out dx_collision_full result) {
 	result = (dx_collision_full)0;
 
 	float3 up_a = rotate_vector(float3(0.0f, 1.0f, 0.0f), e_a.rotation);
-	float3 world_a = e_a.position - up_a * s_a.data.x; 
-	float3 world_b = e_a.position + up_a * s_a.data.x; 
+	float3 world_a = e_a.position - up_a * s_a.data.x;
+	float3 world_b = e_a.position + up_a * s_a.data.x;
 
 	float3 A = world_to_local(world_a, e_b.position, e_b.rotation);
 	float3 B = world_to_local(world_b, e_b.position, e_b.rotation);
@@ -519,7 +416,7 @@ bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_s
 
 	float t_min_ray = 0.0f;
 	float t_max_ray = 1.0f;
-	
+
 	float E_arr[3] = {exp_ext.x, exp_ext.y, exp_ext.z};
 	float A_arr[3] = {A.x, A.y, A.z};
 	float D_arr[3] = {D.x, D.y, D.z};
@@ -599,14 +496,14 @@ bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_s
 	// We skip shallow resolution and fall back to SAT below.
 	if (dist_sq > 0.00001f) {
 		float dist = sqrt(dist_sq);
-		
+
 		result.depth = r - dist;
 		float3 local_normal = delta * (1.0f / dist);
-		
+
 		result.normal = rotate_vector(local_normal, e_b.rotation);
 		result.point_b = local_to_world(q_box, e_b.position, e_b.rotation);
 		result.point_a = result.point_b - result.normal * result.depth;
-		
+
 		return true;
 	}
 
@@ -645,10 +542,10 @@ bool collision_test_capsule_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_s
 	return true;
 }
 
-bool test_edge_axis(float3 axis, float r_a, float r_b, float abs_t, 
+bool test_edge_axis(float3 axis, float r_a, float r_b, float abs_t,
                     inout float min_overlap, inout float3 best_axis, inout int best_type) {
 	float len_sq = dot(axis, axis);
-	
+
 	// Safely skip degenerate axes where the cross product length is near zero (parallel edges)
 	if (len_sq > 0.00001f) {
 		float len = sqrt(len_sq);
@@ -670,7 +567,7 @@ bool test_edge_axis(float3 axis, float r_a, float r_b, float abs_t,
 	return true;
 }
 
-bool collision_test_obb_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+bool collision_test_obb_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b,
                             out dx_collision_full result) {
 	result = (dx_collision_full)0;
 
@@ -679,9 +576,9 @@ bool collision_test_obb_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape
 
 	// Relative rotation quaternion from A to B
 	float4 rel_q = quat_mul(quat_inverse(e_a.rotation), e_b.rotation);
-	
+
 	// Extract the local axes of Box B in Box A's coordinate space.
-	// We manually expand the quaternion to a 3x3 matrix to perfectly match the 
+	// We manually expand the quaternion to a 3x3 matrix to perfectly match the
 	// CPU's float-math operations and prevent precision-based SAT axis drift.
 	float xx = rel_q.x * rel_q.x, yy = rel_q.y * rel_q.y, zz = rel_q.z * rel_q.z;
 	float xy = rel_q.x * rel_q.y, xz = rel_q.x * rel_q.z, yz = rel_q.y * rel_q.z;
@@ -841,10 +738,10 @@ bool collision_test_obb_obb(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape
 	return true;
 }
 
-bool evaluate_narrow_phase(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b, 
+bool evaluate_narrow_phase(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape s_b,
                            out dx_collision_full result) {
 	bool swapped = false;
-	
+
 	if (e_a.shape_type > e_b.shape_type) {
 		dx_entity temp_e = e_a;
 		e_a = e_b;
@@ -853,7 +750,7 @@ bool evaluate_narrow_phase(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape 
 		dx_shape temp_s = s_a;
 		s_a = s_b;
 		s_b = temp_s;
-		
+
 		swapped = true;
 	}
 
@@ -880,38 +777,4 @@ bool evaluate_narrow_phase(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape 
 	}
 
 	return hit;
-}
-
-[numthreads(256, 1, 1)]
-void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= pair_count) return;
-
-	dx_potential_pair p = potential_pairs_srv[i];
-	
-	dx_entity e_a = entities_srv[p.a_index];
-	dx_entity e_b;
-	if (p.b_type == 1) {
-		e_b = entities_srv[p.b_index];
-	} else {
-		e_b = statics_srv[p.b_index];
-	}
-
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
-
-	dx_collision_full c;
-	if (evaluate_narrow_phase(e_a, s_a, e_b, s_b, c)) {
-		uint idx;
-		InterlockedAdd(col_count_uav[0], 1, idx);
-		if (idx < max_collisions) {
-			dx_collision_compact comp;
-			comp.a_index = p.a_index;
-			comp.b_index = (p.b_type == 0) ? (p.b_index + rigid_count) : p.b_index;
-			comp.depth = c.depth;
-			comp.point_a = c.point_a;
-			comp.normal = encode_octahedral(c.normal);
-			collisions_uav[idx] = comp;
-		}
-	}
 }
