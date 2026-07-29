@@ -1,4 +1,5 @@
 #include "algo_work_graphs_aabb_shader.h"
+#include "algo_work_graphs_broad_shader.h"
 #include "algo_work_graphs_init_shader.h"
 #include "algo_work_graphs_lib_shader.h"
 #include "collision_detection_d3d.h"
@@ -15,10 +16,17 @@
 
 #include <string.h>
 
+struct dx_potential_pair {
+	uint32_t a_index;
+	uint32_t b_index;
+	uint32_t b_type;
+	uint32_t pad;
+};
+
 typedef struct { float min_x, max_x, min_y, max_y, min_z, max_z; } packed_aabb;
 
-// Matches D3D12_NODE_GPU_INPUT memory layout, plus 8 bytes of padding to align the 
-// payload data structure perfectly at byte 32.
+// Matches D3D12_NODE_GPU_INPUT memory layout.
+// Aligned to 32 bytes to ensure the 8-byte rule for pointer alignment.
 struct dx_node_gpu_input {
 	uint32_t entrypoint_index;
 	uint32_t num_records;
@@ -30,6 +38,7 @@ struct dx_node_gpu_input {
 struct dx_state_work_graphs {
 	ID3D12RootSignature* root_sig;
 	ID3D12PipelineState* pso_aabb_prep;
+	ID3D12PipelineState* pso_broad_phase;
 	ID3D12PipelineState* pso_init_graph;
 	ID3D12StateObject* work_graph_state_object;
 
@@ -42,6 +51,9 @@ struct dx_state_work_graphs {
 	ID3D12Resource* d_aabb_statics;
 	size_t d_aabb_statics_size;
 
+	ID3D12Resource* d_potential_pairs;
+	size_t d_potential_pairs_size;
+
 	ID3D12Resource* up_gpu_input;
 	size_t up_gpu_input_size;
 	ID3D12Resource* d_gpu_input;
@@ -52,7 +64,6 @@ struct dx_state_work_graphs {
 };
 
 extern "C" dx_state_work_graphs* dx_state_work_graphs_create(dx_shared_state* sh) {
-	// Verify device supports Work Graphs (requires Agility SDK & SM 6.8 compliant driver)
 	D3D12_FEATURE_DATA_D3D12_OPTIONS21 options21 = {};
 	HRESULT hr = sh->device->CheckFeatureSupport(
 		D3D12_FEATURE_D3D12_OPTIONS21, &options21, sizeof(options21));
@@ -115,12 +126,14 @@ extern "C" dx_state_work_graphs* dx_state_work_graphs_create(dx_shared_state* sh
 	pso_desc.CS.pShaderBytecode = algo_work_graphs_aabb_shader;
 	pso_desc.CS.BytecodeLength = sizeof(algo_work_graphs_aabb_shader);
 	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_aabb_prep)));
-	s->pso_aabb_prep->SetName(L"WG_AABB_Prep_PSO");
+
+	pso_desc.CS.pShaderBytecode = algo_work_graphs_broad_shader;
+	pso_desc.CS.BytecodeLength = sizeof(algo_work_graphs_broad_shader);
+	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_broad_phase)));
 
 	pso_desc.CS.pShaderBytecode = algo_work_graphs_init_shader;
 	pso_desc.CS.BytecodeLength = sizeof(algo_work_graphs_init_shader);
 	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_init_graph)));
-	s->pso_init_graph->SetName(L"WG_Init_Graph_PSO");
 
 	// Create Work Graph State Object
 	D3D12_GLOBAL_ROOT_SIGNATURE global_rs_desc = { s->root_sig };
@@ -133,10 +146,8 @@ extern "C" dx_state_work_graphs* dx_state_work_graphs_create(dx_shared_state* sh
 	dxil_lib_desc.DXILLibrary.pShaderBytecode = algo_work_graphs_lib_shader;
 	dxil_lib_desc.DXILLibrary.BytecodeLength = sizeof(algo_work_graphs_lib_shader);
 	
-	// EXPLICITLY EXPORT ONLY THE WORK GRAPH NODES
-	// (This prevents the compute shaders inside the same file from causing State Object validation errors)
 	const wchar_t* export_names[] = {
-		L"BroadPhase_Chunk",
+		L"RoutePairs",
 		L"Narrow_Sph_Sph",
 		L"Narrow_Sph_Cap",
 		L"Narrow_Sph_Box",
@@ -155,8 +166,7 @@ extern "C" dx_state_work_graphs* dx_state_work_graphs_create(dx_shared_state* sh
 	subobjects[1].Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
 	subobjects[1].pDesc = &dxil_lib_desc;
 
-	// Explicitly define the entry node instead of pulling in "all available nodes"
-	D3D12_NODE_ID entry_node = { L"BroadPhase_Chunk", 0 };
+	D3D12_NODE_ID entry_node = { L"RoutePairs", 0 };
 	D3D12_WORK_GRAPH_DESC wg_desc = {};
 	wg_desc.ProgramName = L"CollisionGraph";
 	wg_desc.NumEntrypoints = 1;
@@ -173,9 +183,9 @@ extern "C" dx_state_work_graphs* dx_state_work_graphs_create(dx_shared_state* sh
 
 	hr = sh->device->CreateStateObject(&so_desc, IID_PPV_ARGS(&s->work_graph_state_object));
 	if (FAILED(hr) || !s->work_graph_state_object) {
-		fprintf(stderr, "[dx12] Failed to create Work Graph State Object. HRESULT: 0x%08X\n", (unsigned int)hr);
-		// FIX: Safely clean up and return nullptr to prevent segfaults!
+		fprintf(stderr, "[dx12] Failed to create Work Graph State Object.\n");
 		if (s->pso_aabb_prep) s->pso_aabb_prep->Release();
+		if (s->pso_broad_phase) s->pso_broad_phase->Release();
 		if (s->pso_init_graph) s->pso_init_graph->Release();
 		if (s->root_sig) s->root_sig->Release();
 		free(s);
@@ -186,11 +196,10 @@ extern "C" dx_state_work_graphs* dx_state_work_graphs_create(dx_shared_state* sh
 	s->work_graph_state_object->QueryInterface(IID_PPV_ARGS(&so_props));
 	so_props->GetProgramIdentifier(&s->wg_program_id, L"CollisionGraph");
 
-	ID3D12WorkGraphProperties* wg_props = nullptr;	s->work_graph_state_object->QueryInterface(IID_PPV_ARGS(&wg_props));
+	ID3D12WorkGraphProperties* wg_props = nullptr;
+	s->work_graph_state_object->QueryInterface(IID_PPV_ARGS(&wg_props));
 	s->wg_index = wg_props->GetWorkGraphIndex(L"CollisionGraph");
-	
-	D3D12_NODE_ID entry_name = { L"BroadPhase_Chunk", 0 };
-	s->wg_entrypoint_index = wg_props->GetEntrypointIndex(s->wg_index, entry_name);
+	s->wg_entrypoint_index = wg_props->GetEntrypointIndex(s->wg_index, entry_node);
 
 	wg_props->Release();
 	so_props->Release();
@@ -202,10 +211,12 @@ extern "C" void dx_state_work_graphs_destroy(dx_state_work_graphs* s) {
 	if (!s) return;
 	if (s->root_sig) s->root_sig->Release();
 	if (s->pso_aabb_prep) s->pso_aabb_prep->Release();
+	if (s->pso_broad_phase) s->pso_broad_phase->Release();
 	if (s->pso_init_graph) s->pso_init_graph->Release();
 	if (s->work_graph_state_object) s->work_graph_state_object->Release();
 	if (s->d_aabb_rigids) s->d_aabb_rigids->Release();
 	if (s->d_aabb_statics) s->d_aabb_statics->Release();
+	if (s->d_potential_pairs) s->d_potential_pairs->Release();
 	if (s->up_gpu_input) s->up_gpu_input->Release();
 	if (s->d_gpu_input) s->d_gpu_input->Release();
 	if (s->d_backing_mem) s->d_backing_mem->Release();
@@ -247,17 +258,15 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_en
 						 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 	}
 
-	uint32_t total_chunks = 0;
-	for (uint32_t i = 0; i < rigid_count; ++i) {
-		uint32_t items_to_check = (rigid_count - 1 - i) + static_count;
-		total_chunks += (items_to_check + 63) / 64;
-	}
+	ensure_dx_buffer(sh->device, &state->d_potential_pairs, &state->d_potential_pairs_size,
+					 kernel_max, sizeof(dx_potential_pair), D3D12_HEAP_TYPE_DEFAULT,
+					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 
-	size_t input_buffer_size = sizeof(dx_node_gpu_input) + (size_t)total_chunks * 8;
-	ensure_dx_buffer(sh->device, &state->d_gpu_input, &state->d_gpu_input_size, input_buffer_size,
-					 1, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-	ensure_dx_buffer(sh->device, &state->up_gpu_input, &state->up_gpu_input_size,
-					 sizeof(dx_node_gpu_input), 1, D3D12_HEAP_TYPE_UPLOAD,
+	ensure_dx_buffer(sh->device, &state->d_gpu_input, &state->d_gpu_input_size, 1,
+					 sizeof(dx_node_gpu_input), D3D12_HEAP_TYPE_DEFAULT,
+					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
+	ensure_dx_buffer(sh->device, &state->up_gpu_input, &state->up_gpu_input_size, 1,
+					 sizeof(dx_node_gpu_input), D3D12_HEAP_TYPE_UPLOAD,
 					 D3D12_RESOURCE_FLAG_NONE, 1.0f);
 
 	// Retrieve driver memory requirements
@@ -288,13 +297,15 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_en
 		sh->cmd_list->CopyBufferRegion(sh->d_statics, 0, sh->up_statics, 0,
 									   static_count * sizeof(dx_entity));
 	}
+	// Zero out collision count output
 	sh->cmd_list->CopyBufferRegion(sh->d_col_count, 0, sh->up_zero, 0, sizeof(uint32_t));
 
+	// Pre-fill the GPU Input struct header
 	dx_node_gpu_input input_header = {};
 	input_header.entrypoint_index = state->wg_entrypoint_index;
-	input_header.num_records = 0;
-	input_header.records_address = state->d_gpu_input->GetGPUVirtualAddress() + 32;
-	input_header.records_stride = 8;
+	input_header.num_records = 0; // The broad phase will populate this atomically
+	input_header.records_address = state->d_potential_pairs->GetGPUVirtualAddress();
+	input_header.records_stride = sizeof(dx_potential_pair);
 	
 	void* mapped = nullptr;
 	state->up_gpu_input->Map(0, nullptr, &mapped);
@@ -320,12 +331,8 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_en
 	PIXEndEvent(sh->cmd_list);
 	dx_profile_step(&prof, sh, "upload");
 
-	// --- AABB Prep Phase ---
+	// Common bind for standard Compute Phases
 	sh->cmd_list->SetComputeRootSignature(state->root_sig);
-	sh->cmd_list->SetPipelineState(state->pso_aabb_prep);
-
-	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 255, 0), "Phase: AABB Prep");
-
 	uint32_t constants[5] = { rigid_count, rigid_count, static_count, kernel_max, 0 };
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
 
@@ -333,10 +340,14 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_en
 	sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress()); // t1
 	sh->cmd_list->SetComputeRootShaderResourceView(4, sh->d_rigids->GetGPUVirtualAddress()); // t3
 	sh->cmd_list->SetComputeRootShaderResourceView(5, sh->d_rigids->GetGPUVirtualAddress()); // t4
-	sh->cmd_list->SetComputeRootUnorderedAccessView(8, sh->d_col_count->GetGPUVirtualAddress()); // u1
-	sh->cmd_list->SetComputeRootUnorderedAccessView(9, sh->d_col_count->GetGPUVirtualAddress()); // u2
-	sh->cmd_list->SetComputeRootUnorderedAccessView(10, sh->d_col_count->GetGPUVirtualAddress()); // u3
+	sh->cmd_list->SetComputeRootUnorderedAccessView(8, state->d_potential_pairs->GetGPUVirtualAddress()); // u1
+	sh->cmd_list->SetComputeRootUnorderedAccessView(9, state->d_gpu_input->GetGPUVirtualAddress()); // u2
+	sh->cmd_list->SetComputeRootUnorderedAccessView(10, sh->d_collisions->GetGPUVirtualAddress()); // u3
 	sh->cmd_list->SetComputeRootUnorderedAccessView(11, sh->d_col_count->GetGPUVirtualAddress()); // u4
+
+	// --- AABB Prep Phase ---
+	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 255, 0), "Phase: AABB Prep");
+	sh->cmd_list->SetPipelineState(state->pso_aabb_prep);
 
 	sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
 	sh->cmd_list->SetComputeRootUnorderedAccessView(7, state->d_aabb_rigids->GetGPUVirtualAddress()); // u0
@@ -367,24 +378,34 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_en
 	bg_prep.pGlobalBarriers = &gb_prep;
 	sh->cmd_list->Barrier(1, &bg_prep);
 
-	// --- Init Graph Phase ---
-	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 128, 0), "Phase: Init Graph");
-	sh->cmd_list->SetPipelineState(state->pso_init_graph);
+	// --- Broad Phase ---
+	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 128, 0), "Phase: Broad Phase");
+	sh->cmd_list->SetPipelineState(state->pso_broad_phase);
 	
-	constants[0] = 0; // Not used
+	constants[0] = 0;
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
 	
-	sh->cmd_list->SetComputeRootUnorderedAccessView(8, state->d_gpu_input->GetGPUVirtualAddress()); // u1
-	
+	sh->cmd_list->SetComputeRootShaderResourceView(4, state->d_aabb_rigids->GetGPUVirtualAddress()); // t3
+	if (static_count > 0) {
+		sh->cmd_list->SetComputeRootShaderResourceView(5, state->d_aabb_statics->GetGPUVirtualAddress()); // t4
+	} else {
+		sh->cmd_list->SetComputeRootShaderResourceView(5, sh->d_rigids->GetGPUVirtualAddress());
+	}
+	sh->cmd_list->SetComputeRootUnorderedAccessView(7, sh->d_col_count->GetGPUVirtualAddress()); // dummy u0
+
 	sh->cmd_list->Dispatch(grid_size, 1, 1);
 	PIXEndEvent(sh->cmd_list);
-	dx_profile_step(&prof, sh, "init_graph");
+	dx_profile_step(&prof, sh, "broad_phase");
+
+	// --- Init Graph (Clamp count) ---
+	sh->cmd_list->SetPipelineState(state->pso_init_graph);
+	sh->cmd_list->Dispatch(1, 1, 1);
 
 	D3D12_GLOBAL_BARRIER gb_init = {};
 	gb_init.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 	gb_init.SyncAfter = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 	gb_init.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
-	gb_init.AccessAfter = D3D12_BARRIER_ACCESS_SHADER_RESOURCE; // Required for DispatchGraph
+	gb_init.AccessAfter = D3D12_BARRIER_ACCESS_SHADER_RESOURCE; // Required for DispatchGraph NodeGPUInput
 
 	D3D12_BARRIER_GROUP bg_init = {};
 	bg_init.Type = D3D12_BARRIER_TYPE_GLOBAL;
@@ -392,25 +413,15 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_en
 	bg_init.pGlobalBarriers = &gb_init;
 	sh->cmd_list->Barrier(1, &bg_init);
 
-	// --- Dispatch Graph ---
+	// --- Dispatch Work Graph (Narrow Phase) ---
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Work Graph");
 
-	sh->cmd_list->SetComputeRootShaderResourceView(4, state->d_aabb_rigids->GetGPUVirtualAddress()); // t3
-	if (static_count > 0) {
-		sh->cmd_list->SetComputeRootShaderResourceView(5, state->d_aabb_statics->GetGPUVirtualAddress()); // t4
-	} else {
-		sh->cmd_list->SetComputeRootShaderResourceView(5, sh->d_rigids->GetGPUVirtualAddress());
-	}
 	sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
 	if (static_count > 0) {
 		sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_statics->GetGPUVirtualAddress()); // t1
 	} else {
 		sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress());
 	}
-
-	sh->cmd_list->SetComputeRootUnorderedAccessView(8, sh->d_col_count->GetGPUVirtualAddress()); // u1 (dummy)
-	sh->cmd_list->SetComputeRootUnorderedAccessView(10, sh->d_collisions->GetGPUVirtualAddress()); // u3
-	sh->cmd_list->SetComputeRootUnorderedAccessView(11, sh->d_col_count->GetGPUVirtualAddress()); // u4
 
 	ID3D12GraphicsCommandList10* cmd_list10 = nullptr;
 	sh->cmd_list->QueryInterface(IID_PPV_ARGS(&cmd_list10));
@@ -431,7 +442,7 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_en
 	dispatch_desc.NodeGPUInput = state->d_gpu_input->GetGPUVirtualAddress();
 
 	cmd_list10->DispatchGraph(&dispatch_desc);
-    cmd_list10->Release();
+	cmd_list10->Release();
 
 	PIXEndEvent(sh->cmd_list);
 	dx_profile_step(&prof, sh, "work_graph");
