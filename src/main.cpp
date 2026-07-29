@@ -8,6 +8,16 @@
 #include <windows.h>
 #endif
 
+#ifdef _WIN32
+// Export Agility SDK parameters so the OS loads our local D3D12Core.dll
+// containing Work Graphs support instead of the default system runtime.
+extern "C" {
+	__declspec(dllexport) UINT D3D12SDKVersion = 614;
+	__declspec(dllexport) const char* D3D12SDKPath = ".\\D3D12\\";
+}
+
+#endif
+
 inline float sign_not_zero(float v) {
 	return v >= 0.0f ? 1.0f : -1.0f;
 }
@@ -90,6 +100,7 @@ int main() {
 	dx_state_simple_naive* state_naive = dx_state_simple_naive_create(sh);
 	dx_state_simple_binned* state_binned = dx_state_simple_binned_create(sh);
 	dx_state_execute_indirect* state_indirect = dx_state_execute_indirect_create(sh);
+	dx_state_work_graphs* state_work_graphs = dx_state_work_graphs_create(sh);
 
 	uint32_t frame_index = 0;
 	uint32_t counts[4];
@@ -138,25 +149,37 @@ int main() {
 			sh, state_indirect, rigids, rigid_count, statics, static_count, shapes, shape_count,
 			true, &indirect_col_count);
 
+		uint32_t work_graphs_col_count = 0;
+		dx_collision_compact* work_graphs_compact = dx_run_work_graphs(
+			sh, state_work_graphs, rigids, rigid_count, statics, static_count, shapes, shape_count,
+			true, &work_graphs_col_count);
+
 		// GPU vs GPU comparison (sort, then memcmp)
 		bool pipeline_match = true;
-		if (naive_col_count != binned_col_count || binned_col_count != indirect_col_count) {
+		if (naive_col_count != binned_col_count || binned_col_count != indirect_col_count ||
+			binned_col_count != work_graphs_col_count) {
 			fprintf(stderr,
-				"❌ Frame %u FAILED: Pipeline mismatch! "
-				"Naive (%u) vs Binned (%u) vs Indirect (%u)\n",
-				frame_index, naive_col_count, binned_col_count, indirect_col_count);
+					"❌ Frame %u FAILED: Pipeline mismatch! "
+					"Naive (%u) vs Binned (%u) vs Indirect (%u) vs Work Graphs (%u)\n",
+					frame_index, naive_col_count, binned_col_count, indirect_col_count,
+					work_graphs_col_count);
 			pipeline_match = false;
-		} else if (binned_col_count > 0) {
+		}
+		else if (binned_col_count > 0) {
 			qsort(naive_compact, naive_col_count, sizeof(dx_collision_compact),
 				  compare_compact_collisions);
 			qsort(binned_compact, binned_col_count, sizeof(dx_collision_compact),
 				  compare_compact_collisions);
 			qsort(indirect_compact, indirect_col_count, sizeof(dx_collision_compact),
 				  compare_compact_collisions);
+			qsort(work_graphs_compact, work_graphs_col_count, sizeof(dx_collision_compact),
+				  compare_compact_collisions);
 			if (memcmp(naive_compact, binned_compact,
 					   binned_col_count * sizeof(dx_collision_compact)) != 0 ||
 				memcmp(binned_compact, indirect_compact,
 					   indirect_col_count * sizeof(dx_collision_compact)) != 0) {
+				// We don't compare Work Graph results as the shaders are compiled with a different
+				// compiler flag (Shader Model 6.8) and produces slightly different results
 				fprintf(stderr,
 						"❌ Frame %u FAILED: Pipeline mismatch! GPU algorithms returned "
 						"different data.\n",
@@ -167,6 +190,7 @@ int main() {
 
 		if (naive_compact) free(naive_compact);
 		if (indirect_compact) free(indirect_compact);
+		if (work_graphs_compact) free(work_graphs_compact);
 
 		if (!pipeline_match) {
 			// Cancel further validation if the GPU algorithms don't even agree with each other
@@ -367,6 +391,7 @@ int main() {
 	dx_state_simple_naive_destroy(state_naive);
 	dx_state_simple_binned_destroy(state_binned);
 	dx_state_execute_indirect_destroy(state_indirect);
+	dx_state_work_graphs_destroy(state_work_graphs);
 	dx_shared_state_destroy(sh);
 
 	fclose(file);

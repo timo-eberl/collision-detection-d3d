@@ -23,6 +23,15 @@ if(MSVC)
 	FetchContent_MakeAvailable(WinPixEventRuntime)
 endif()
 
+# Agility SDK works on all Windows compilers (MSVC, MinGW)
+if(WIN32)
+	FetchContent_Declare(
+		AgilitySDK
+		URL https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.614.1
+	)
+	FetchContent_MakeAvailable(AgilitySDK)
+endif()
+
 find_program(DXC_EXECUTABLE dxc)
 
 if(NOT DXC_EXECUTABLE)
@@ -129,12 +138,37 @@ add_custom_command(
 			${CMAKE_CURRENT_SOURCE_DIR}/src/collision_math.hlsli
 )
 
+# Compile shader (algo_work_graphs)
+add_custom_command(
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_lib_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_init_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_aabb_shader.h
+	COMMAND ${DXC_EXECUTABLE}
+		-T lib_6_8 -O3
+		-Vn algo_work_graphs_lib_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_lib_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_work_graphs.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_init_graph -T cs_6_8 -O3
+		-Vn algo_work_graphs_init_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_init_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_work_graphs.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_aabb_prep -T cs_6_8 -O3
+		-Vn algo_work_graphs_aabb_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_aabb_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_work_graphs.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/algo_work_graphs.hlsl
+			${CMAKE_CURRENT_SOURCE_DIR}/src/collision_math.hlsli
+)
+
 # Library
 add_library(${PROJECT_NAME}
 	src/shared_state.cpp
 	src/algo_simple_naive.cpp
 	src/algo_simple_binned.cpp
 	src/algo_execute_indirect.cpp
+	src/algo_work_graphs.cpp
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_aabb_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_broad_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_narrow_shader.h
@@ -145,6 +179,9 @@ add_library(${PROJECT_NAME}
 	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_broad_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_prep_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_lib_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_init_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_aabb_shader.h
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -188,5 +225,19 @@ if(MSVC)
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		"${winpixeventruntime_SOURCE_DIR}/bin/x64/WinPixEventRuntime.dll"
 		$<TARGET_FILE_DIR:${PROJECT_NAME}_app>
+	)
+endif()
+
+if(WIN32)
+	# Ensure the Agility SDK dlls are copied to a D3D12 subfolder next to the executable
+	add_custom_command(TARGET ${PROJECT_NAME}_app POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E make_directory
+		$<TARGET_FILE_DIR:${PROJECT_NAME}_app>/D3D12
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${agilitysdk_SOURCE_DIR}/build/native/bin/x64/D3D12Core.dll"
+		$<TARGET_FILE_DIR:${PROJECT_NAME}_app>/D3D12/D3D12Core.dll
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${agilitysdk_SOURCE_DIR}/build/native/bin/x64/d3d12SDKLayers.dll"
+		$<TARGET_FILE_DIR:${PROJECT_NAME}_app>/D3D12/d3d12SDKLayers.dll
 	)
 endif()
