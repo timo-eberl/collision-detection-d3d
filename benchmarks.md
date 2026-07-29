@@ -60,3 +60,11 @@ RX 9070 XT:
 [dx12] simple_naive (avg over 10) upload=0.703ms [0.693-0.714] aabb_prep=0.052ms [0.016-0.090] broad=27.001ms [25.954-28.536] gap_narrow=0.144ms [0.130-0.170] narrow=0.179ms [0.120-0.218] gap_readback=0.103ms [0.086-0.136] readback=0.828ms [0.694-1.079] total=29.011ms cpu_total=31.085ms [29.949-32.808]
 [dx12] simple_binned (avg over 10) upload=0.685ms [0.683-0.690] aabb_prep=0.021ms [0.014-0.026] broad=23.834ms [23.097-24.783] gap_narrow=0.139ms [0.116-0.152] narrow=0.113ms [0.062-0.152] gap_readback=0.140ms [0.074-0.426] readback=0.808ms [0.693-0.853] total=25.740ms cpu_total=27.537ms [26.528-28.712]
 [dx12] execute_indirect (avg over 10) upload=0.684ms [0.682-0.687] aabb_prep=0.022ms [0.014-0.045] broad=23.754ms [22.699-24.551] dispatch_prep=0.013ms [0.011-0.019] narrow=0.132ms [0.061-0.442] gap_readback=0.146ms [0.118-0.218] readback=0.824ms [0.694-1.043] total=25.576ms cpu_total=27.575ms [26.295-29.139]
+
+## 8b759a737001f2df473ff5eb80c2bab2a5ef6aeb (work graph added)
+
+RX 9070 XT:
+[dx12] simple_naive (avg over 10) upload=0.727ms [0.714-0.769] aabb_prep=0.036ms [0.030-0.057] broad=28.250ms [26.352-32.588] gap_narrow=0.217ms [0.161-0.518] narrow=0.156ms [0.121-0.169] gap_readback=0.131ms [0.091-0.161] readback=0.800ms [0.693-0.838] total=30.319ms cpu_total=32.467ms [30.393-36.974]
+[dx12] simple_binned (avg over 10) upload=0.720ms [0.709-0.790] aabb_prep=0.030ms [0.015-0.035] broad=24.090ms [22.622-26.694] gap_narrow=0.164ms [0.138-0.196] narrow=0.082ms [0.066-0.085] gap_readback=0.125ms [0.111-0.162] readback=0.843ms [0.692-1.232] total=26.055ms cpu_total=27.796ms [26.319-30.533]
+[dx12] execute_indirect (avg over 10) upload=0.708ms [0.690-0.710] aabb_prep=0.029ms [0.017-0.031] broad=24.163ms [23.068-26.765] dispatch_prep=0.023ms [0.012-0.025] narrow=0.087ms [0.068-0.099] gap_readback=0.167ms [0.133-0.191] readback=0.798ms [0.694-0.832] total=25.975ms cpu_total=27.846ms [26.680-30.209]
+[dx12] work_graphs (avg over 10) upload=0.709ms [0.693-0.713] aabb_prep=0.031ms [0.017-0.039] init_graph=17.443ms [16.117-19.657] work_graph=106.963ms [105.921-109.590] gap_readback=0.197ms [0.162-0.259] readback=0.846ms [0.711-1.071] total=126.188ms cpu_total=128.001ms [126.046-131.195]
