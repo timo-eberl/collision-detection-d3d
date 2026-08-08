@@ -73,6 +73,177 @@ bool vec3_eq_approx(const float* a, const float* b, float epsilon = 0.001f) {
 	       float_eq_approx(a[2], b[2], epsilon);
 }
 
+bool verify_results(const char* algorithm_name,
+					const dx_collision_compact* actual_compact, uint32_t actual_col_count,
+					const dx_collision_full* expected_cols, uint32_t expected_col_count,
+					const dx_entity* rigids, uint32_t rigid_count,
+					const dx_entity* statics, const dx_shape* shapes,
+					uint32_t frame_index) {
+
+	dx_collision_full* actual_cols = nullptr;
+
+	if (actual_col_count > 0) {
+		actual_cols = (dx_collision_full*)malloc(actual_col_count * sizeof(dx_collision_full));
+
+		for (uint32_t j = 0; j < actual_col_count; ++j) {
+			const dx_collision_compact* comp = &actual_compact[j];
+			dx_collision_full* full = &actual_cols[j];
+
+			full->a_index = comp->a_index;
+			if (comp->b_index >= rigid_count) {
+				full->b_index = comp->b_index - rigid_count;
+				full->b_type = 0;
+			} else {
+				full->b_index = comp->b_index;
+				full->b_type = 1;
+			}
+
+			full->depth = comp->depth;
+			full->point_a[0] = comp->point_a[0];
+			full->point_a[1] = comp->point_a[1];
+			full->point_a[2] = comp->point_a[2];
+
+			decode_octahedral(comp->normal, full->normal);
+
+			full->point_b[0] = full->point_a[0] + full->normal[0] * full->depth;
+			full->point_b[1] = full->point_a[1] + full->normal[1] * full->depth;
+			full->point_b[2] = full->point_a[2] + full->normal[2] * full->depth;
+
+			full->pad[0] = 0; full->pad[1] = 0; full->pad[2] = 0;
+		}
+
+		qsort(actual_cols, actual_col_count, sizeof(dx_collision_full), compare_collisions);
+	}
+
+	auto print_body_details = [&](uint32_t a_idx, uint32_t b_idx, uint32_t b_type) {
+		const dx_entity& a = rigids[a_idx];
+		const dx_entity& b = (b_type == 1) ? rigids[b_idx] : statics[b_idx];
+		const dx_shape& s_a = shapes[a.shape_index];
+		const dx_shape& s_b = shapes[b.shape_index];
+
+		const char* type_names[] = {"Sphere", "Capsule", "Box", "Convex"};
+
+		printf("  Body A (%s):\n", a.shape_type < 4 ? type_names[a.shape_type] : "Unknown");
+		printf("    Pos:  (%f, %f, %f)\n", a.position[0], a.position[1], a.position[2]);
+		printf("    Rot:  (%f, %f, %f, %f)\n", 
+			   a.rotation[0], a.rotation[1], a.rotation[2], a.rotation[3]);
+		printf("    Data: (%f, %f, %f, %f)\n", s_a.data[0], s_a.data[1], s_a.data[2], s_a.data[3]);
+
+		printf("  Body B (%s):\n", b.shape_type < 4 ? type_names[b.shape_type] : "Unknown");
+		printf("    Pos:  (%f, %f, %f)\n", b.position[0], b.position[1], b.position[2]);
+		printf("    Rot:  (%f, %f, %f, %f)\n", 
+			   b.rotation[0], b.rotation[1], b.rotation[2], b.rotation[3]);
+		printf("    Data: (%f, %f, %f, %f)\n", s_b.data[0], s_b.data[1], s_b.data[2], s_b.data[3]);
+	};
+
+	bool passed = true;
+	uint32_t i = 0, j = 0;
+
+	// walk through both arrays simultaneously
+	// If we find a pair that exists in one list but not the other, we check its depth. If the
+	// depth is close to zero, we ignore it
+	while (i < expected_col_count || j < actual_col_count) {
+		const dx_collision_full* exp = (i < expected_col_count) ? &expected_cols[i] : nullptr;
+		const dx_collision_full* act = (j < actual_col_count) ? &actual_cols[j] : nullptr;
+
+		int cmp = 0;
+		if (exp && act) cmp = compare_collisions(exp, act);
+		else if (exp) cmp = -1;
+		else cmp = 1;
+
+		if (cmp == 0) {
+			// Pair exists in both, check math
+			bool depth_ok = float_eq_approx(exp->depth, act->depth, 0.001f);
+			bool normal_ok = vec3_eq_approx(exp->normal, act->normal, 0.02f);
+			bool pt_ok = vec3_eq_approx(exp->point_a, act->point_a, 0.001f);
+
+			// Handle parallel shapes (sliding contact point on the same normal)
+			if (!pt_ok && normal_ok) {
+				float dx = act->point_a[0] - exp->point_a[0];
+				float dy = act->point_a[1] - exp->point_a[1];
+				float dz = act->point_a[2] - exp->point_a[2];
+				// If the distance along the expected normal is ~0, it's a valid sliding point
+				float normal_err =
+					fabsf(dx * exp->normal[0] + dy * exp->normal[1] + dz * exp->normal[2]);
+				if (normal_err < 0.01f) { pt_ok = true; }
+			}
+
+			// Handle SAT: Different features with almost identical depth
+			// When CPU and GPU evaluate competing axes, precision drift can cause them to pick
+			// different features. Even though normal and points are different, the result may
+			// still be valid
+			if (depth_ok && (!normal_ok || !pt_ok)) {
+				float depth_diff = fabsf(exp->depth - act->depth);
+
+				// If depths are extremely close (e.g., within 0.0002 or 0.5% relative error),
+				// different penetration vectors are also acceptable
+				if (depth_diff < 0.0002f ||
+					(depth_diff / fmaxf(exp->depth, 0.0001f) < 0.005f)) {
+					normal_ok = true;
+					pt_ok = true;
+				}
+			}
+
+			if (!depth_ok || !normal_ok || !pt_ok) {
+				printf("❌ Frame %u FAILED (%s): Math mismatch for pair (%u, %u type %u)\n",
+					   frame_index, algorithm_name, exp->a_index, exp->b_index, exp->b_type);
+
+				float exp_len = sqrtf(exp->normal[0] * exp->normal[0] +
+									  exp->normal[1] * exp->normal[1] +
+									  exp->normal[2] * exp->normal[2]);
+				float act_len = sqrtf(act->normal[0] * act->normal[0] +
+									  act->normal[1] * act->normal[1] +
+									  act->normal[2] * act->normal[2]);
+
+				printf("  Expected: depth=%f, normal=(%f, %f, %f) len=%f, pt_a=(%f, %f, %f)\n",
+					   exp->depth, exp->normal[0], exp->normal[1], exp->normal[2], exp_len,
+					   exp->point_a[0], exp->point_a[1], exp->point_a[2]);
+
+				printf("  Actual:   depth=%f, normal=(%f, %f, %f) len=%f, pt_a=(%f, %f, %f)\n",
+					   act->depth, act->normal[0], act->normal[1], act->normal[2], act_len,
+					   act->point_a[0], act->point_a[1], act->point_a[2]);
+
+				print_body_details(exp->a_index, exp->b_index, exp->b_type);
+
+				passed = false; break;
+			}
+			i++; j++;
+		}
+		else if (cmp < 0) {
+			// Expected pair is missing from Actual (GPU missed it)
+			if (exp->depth < 0.0001f) {
+				i++;
+			} else {
+				printf("❌ Frame %u FAILED (%s): Missing expected pair (%u, %u type %u) "
+					   "with depth=%f\n",
+					   frame_index, algorithm_name, exp->a_index, exp->b_index, 
+					   exp->b_type, exp->depth);
+
+				print_body_details(exp->a_index, exp->b_index, exp->b_type);
+
+				passed = false; break;
+			}
+		}
+		else {
+			// Actual pair is extra (GPU found an extra one)
+			if (act->depth < 0.0001f) {
+				j++;
+			} else {
+				printf("❌ Frame %u FAILED (%s): Extra GPU pair (%u, %u type %u) with depth=%f\n",
+					   frame_index, algorithm_name, act->a_index, act->b_index, 
+					   act->b_type, act->depth);
+
+				print_body_details(act->a_index, act->b_index, act->b_type);
+
+				passed = false; break;
+			}
+		}
+	}
+
+	if (actual_cols) free(actual_cols);
+	return passed;
+}
+
 int main() {
 
 	// Fix emojis on some Windows terminals
@@ -168,209 +339,53 @@ int main() {
 					   binned_col_count * sizeof(dx_collision_compact)) != 0 ||
 				memcmp(binned_compact, indirect_compact,
 					   indirect_col_count * sizeof(dx_collision_compact)) != 0) {
-				// We don't compare Work Graph results as they yield slightly different output.
-				// At first I thought it's because the compiler flags are different
-				// (Shader Model 6.8), but it's still the case after using the same flags for
-				// every algorithm.
+				// We don't memcmp Work Graph results as they yield slightly different output.
+				// Presumably this is caused by the different compiler target profiles (lib_6_8 for
+				// Work Graphs vs cs_6_8 for the compute shaders).
 				printf("❌ Frame %u FAILED: Pipeline mismatch! GPU algorithms returned "
 					   "different data.\n", frame_index);
 				pipeline_match = false;
 			}
 		}
 
-		if (naive_compact) free(naive_compact);
-		if (indirect_compact) free(indirect_compact);
-		if (work_graphs_compact) free(work_graphs_compact);
-
 		if (!pipeline_match) {
 			// Cancel further validation if the GPU algorithms don't even agree with each other
-			if (binned_compact) free(binned_compact);
-			free(rigids);
-			free(statics);
-			free(shapes);
-			free(expected_cols);
-			frame_index++;
-			continue;
-		}
-
-		// GPU vs CPU comparison
-		uint32_t actual_col_count = binned_col_count;
-		dx_collision_compact* actual_compact = binned_compact;
-		dx_collision_full* actual_cols = nullptr;
-		if (actual_col_count > 0) {
-			actual_cols = (dx_collision_full*)malloc(
-				actual_col_count * sizeof(dx_collision_full));
-
-			for (uint32_t j = 0; j < actual_col_count; ++j) {
-				dx_collision_compact* comp = &actual_compact[j];
-				dx_collision_full* full = &actual_cols[j];
-
-				full->a_index = comp->a_index;
-				if (comp->b_index >= rigid_count) {
-					full->b_index = comp->b_index - rigid_count;
-					full->b_type = 0;
-				} else {
-					full->b_index = comp->b_index;
-					full->b_type = 1;
-				}
-
-				full->depth = comp->depth;
-				full->point_a[0] = comp->point_a[0];
-				full->point_a[1] = comp->point_a[1];
-				full->point_a[2] = comp->point_a[2];
-
-				decode_octahedral(comp->normal, full->normal);
-
-				full->point_b[0] = full->point_a[0] + full->normal[0] * full->depth;
-				full->point_b[1] = full->point_a[1] + full->normal[1] * full->depth;
-				full->point_b[2] = full->point_a[2] + full->normal[2] * full->depth;
-
-				full->pad[0] = 0; full->pad[1] = 0; full->pad[2] = 0;
-			}
-			free(actual_compact);
+			goto frame_cleanup;
 		}
 
 		if (expected_col_count > 0) {
 			qsort(expected_cols, expected_col_count, sizeof(dx_collision_full), compare_collisions);
 		}
-		if (actual_col_count > 0) {
-			qsort(actual_cols, actual_col_count, sizeof(dx_collision_full), compare_collisions);
-		}
 
-		auto print_body_details = [&](uint32_t a_idx, uint32_t b_idx, uint32_t b_type) {
-			dx_entity& a = rigids[a_idx];
-			dx_entity& b = (b_type == 1) ? rigids[b_idx] : statics[b_idx];
-			dx_shape& s_a = shapes[a.shape_index];
-			dx_shape& s_b = shapes[b.shape_index];
+		{
+			bool binned_passed = verify_results(
+				"Binned", binned_compact, binned_col_count, expected_cols, expected_col_count,
+				rigids, rigid_count, statics, shapes, frame_index);
 
-			const char* type_names[] = {"Sphere", "Capsule", "Box", "Convex"};
+			// because we can't memcmp work graphs, we verify against cpu results
+			bool wg_passed = verify_results(
+				"Work Graphs", work_graphs_compact, work_graphs_col_count, expected_cols,
+				expected_col_count, rigids, rigid_count, statics, shapes, frame_index);
 
-			printf("  Body A (%s):\n", a.shape_type < 4 ? type_names[a.shape_type] : "Unknown");
-			printf("    Pos:  (%f, %f, %f)\n", a.position[0], a.position[1], a.position[2]);
-			printf("    Rot:  (%f, %f, %f, %f)\n", a.rotation[0], a.rotation[1], a.rotation[2], a.rotation[3]);
-			printf("    Data: (%f, %f, %f, %f)\n", s_a.data[0], s_a.data[1], s_a.data[2], s_a.data[3]);
-
-			printf("  Body B (%s):\n", b.shape_type < 4 ? type_names[b.shape_type] : "Unknown");
-			printf("    Pos:  (%f, %f, %f)\n", b.position[0], b.position[1], b.position[2]);
-			printf("    Rot:  (%f, %f, %f, %f)\n", b.rotation[0], b.rotation[1], b.rotation[2], b.rotation[3]);
-			printf("    Data: (%f, %f, %f, %f)\n", s_b.data[0], s_b.data[1], s_b.data[2], s_b.data[3]);
-		};
-
-		bool passed = true;
-		uint32_t i = 0, j = 0;
-
-		// walk through both arrays simultaneously
-		// If we find a pair that exists in one list but not the other, we check its depth. If the
-		// depth is close to zero, we ignore it
-		while (i < expected_col_count || j < actual_col_count) {
-			dx_collision_full* exp = (i < expected_col_count) ? &expected_cols[i] : nullptr;
-			dx_collision_full* act = (j < actual_col_count) ? &actual_cols[j] : nullptr;
-
-			int cmp = 0;
-			if (exp && act) cmp = compare_collisions(exp, act);
-			else if (exp) cmp = -1;
-			else cmp = 1;
-
-			if (cmp == 0) {
-				// Pair exists in both, check math
-				bool depth_ok = float_eq_approx(exp->depth, act->depth, 0.001f);
-				bool normal_ok = vec3_eq_approx(exp->normal, act->normal, 0.02f);
-				bool pt_ok = vec3_eq_approx(exp->point_a, act->point_a, 0.001f);
-
-				// Handle parallel shapes (sliding contact point on the same normal)
-				if (!pt_ok && normal_ok) {
-					float dx = act->point_a[0] - exp->point_a[0];
-					float dy = act->point_a[1] - exp->point_a[1];
-					float dz = act->point_a[2] - exp->point_a[2];
-					// If the distance along the expected normal is ~0, it's a valid sliding point
-					float normal_err =
-						fabsf(dx * exp->normal[0] + dy * exp->normal[1] + dz * exp->normal[2]);
-					if (normal_err < 0.01f) { pt_ok = true; }
-				}
-
-				// Handle SAT: Different features with almost identical depth
-				// When CPU and GPU evaluate competing axes, precision drift can cause them to pick
-				// different features. Even though normal and points are different, the result may
-				// still be valid
-				if (depth_ok && (!normal_ok || !pt_ok)) {
-					float depth_diff = fabsf(exp->depth - act->depth);
-
-					// If depths are extremely close (e.g., within 0.0002 or 0.5% relative error),
-					// different penetration vectors are also acceptable
-					if (depth_diff < 0.0002f ||
-						(depth_diff / fmaxf(exp->depth, 0.0001f) < 0.005f)) {
-						normal_ok = true;
-						pt_ok = true;
-					}
-				}
-
-				if (!depth_ok || !normal_ok || !pt_ok) {
-					printf("❌ Frame %u FAILED: Math mismatch for pair (%u, %u type %u)\n",
-						   frame_index, exp->a_index, exp->b_index, exp->b_type);
-
-					float exp_len = sqrtf(exp->normal[0] * exp->normal[0] +
-										  exp->normal[1] * exp->normal[1] +
-										  exp->normal[2] * exp->normal[2]);
-					float act_len = sqrtf(act->normal[0] * act->normal[0] +
-										  act->normal[1] * act->normal[1] +
-										  act->normal[2] * act->normal[2]);
-
-					printf("  Expected: depth=%f, normal=(%f, %f, %f) len=%f, pt_a=(%f, %f, %f)\n",
-						   exp->depth, exp->normal[0], exp->normal[1], exp->normal[2], exp_len,
-						   exp->point_a[0], exp->point_a[1], exp->point_a[2]);
-
-					printf("  Actual:   depth=%f, normal=(%f, %f, %f) len=%f, pt_a=(%f, %f, %f)\n",
-						   act->depth, act->normal[0], act->normal[1], act->normal[2], act_len,
-						   act->point_a[0], act->point_a[1], act->point_a[2]);
-
-					print_body_details(exp->a_index, exp->b_index, exp->b_type);
-
-					passed = false; break;
-				}
-				i++; j++;
-			}
-			else if (cmp < 0) {
-				// Expected pair is missing from Actual (GPU missed it)
-				if (exp->depth < 0.0001f) {
-					i++;
-				} else {
-					printf("❌ Frame %u FAILED: Missing expected pair (%u, %u type %u) "
-						   "with depth=%f\n",
-						   frame_index, exp->a_index, exp->b_index, exp->b_type, exp->depth);
-
-					print_body_details(exp->a_index, exp->b_index, exp->b_type);
-
-					passed = false; break;
-				}
-			}
-			else {
-				// Actual pair is extra (GPU found an extra one)
-				if (act->depth < 0.0001f) {
-					j++;
-				} else {
-					printf("❌ Frame %u FAILED: Extra GPU pair (%u, %u type %u) with depth=%f\n",
-						   frame_index, act->a_index, act->b_index, act->b_type, act->depth);
-
-					print_body_details(act->a_index, act->b_index, act->b_type);
-
-					passed = false; break;
-				}
+			if (binned_passed && wg_passed) {
+				printf("✅ Frame %u PASSED: %u collisions\n", frame_index, binned_col_count);
 			}
 		}
 
-		if (passed) {
-			printf("✅ Frame %u PASSED: %u collisions\n", frame_index, actual_col_count);
-		}
-
+	frame_cleanup:
 		// Flush, so stdout and stderr messages are printed in order (OS dependent)
 		fflush(stdout);
 		fflush(stderr);
+
+		if (naive_compact) free(naive_compact);
+		if (binned_compact) free(binned_compact);
+		if (indirect_compact) free(indirect_compact);
+		if (work_graphs_compact) free(work_graphs_compact);
 
 		free(rigids);
 		free(statics);
 		free(shapes);
 		free(expected_cols);
-		if (actual_cols) free(actual_cols);
 
 		frame_index++;
 	}
