@@ -8,16 +8,6 @@
 #include <windows.h>
 #endif
 
-#ifdef _WIN32
-// Export Agility SDK parameters so the OS loads our local D3D12Core.dll
-// containing Work Graphs support instead of the default system runtime.
-extern "C" {
-	__declspec(dllexport) UINT D3D12SDKVersion = 614;
-	__declspec(dllexport) const char* D3D12SDKPath = ".\\D3D12\\";
-}
-
-#endif
-
 inline float sign_not_zero(float v) {
 	return v >= 0.0f ? 1.0f : -1.0f;
 }
@@ -27,14 +17,14 @@ void decode_octahedral(const float* enc, float* n) {
 	float y = enc[1];
 	// Calculate z based on the octahedron's geometric properties
 	float z = 1.0f - fabsf(x) - fabsf(y);
-	
+
 	// If the vector points into the lower hemisphere, un-fold the xy coordinates
 	if (z < 0.0f) {
 		float old_x = x;
 		x = (1.0f - fabsf(y)) * sign_not_zero(old_x);
 		y = (1.0f - fabsf(old_x)) * sign_not_zero(y);
 	}
-	
+
 	float len = sqrtf(x * x + y * y + z * z);
 	if (len > 0.00001f) {
 		n[0] = x / len;
@@ -92,7 +82,7 @@ int main() {
 
 	FILE* file = fopen("collision_test_data.bin", "rb");
 	if (!file) {
-		fprintf(stderr, "Failed to open collision_test_data.bin\n");
+		printf("❌ Failed to open collision_test_data.bin\n");
 		return 1;
 	}
 
@@ -158,11 +148,10 @@ int main() {
 		bool pipeline_match = true;
 		if (naive_col_count != binned_col_count || binned_col_count != indirect_col_count ||
 			binned_col_count != work_graphs_col_count) {
-			fprintf(stderr,
-					"❌ Frame %u FAILED: Pipeline mismatch! "
-					"Naive (%u) vs Binned (%u) vs Indirect (%u) vs Work Graphs (%u)\n",
-					frame_index, naive_col_count, binned_col_count, indirect_col_count,
-					work_graphs_col_count);
+			printf("❌ Frame %u FAILED: Pipeline mismatch! "
+				   "Naive (%u) vs Binned (%u) vs Indirect (%u) vs Work Graphs (%u)\n",
+				   frame_index, naive_col_count, binned_col_count, indirect_col_count,
+				   work_graphs_col_count);
 			pipeline_match = false;
 		}
 		else if (binned_col_count > 0) {
@@ -174,16 +163,17 @@ int main() {
 				  compare_compact_collisions);
 			qsort(work_graphs_compact, work_graphs_col_count, sizeof(dx_collision_compact),
 				  compare_compact_collisions);
+
 			if (memcmp(naive_compact, binned_compact,
 					   binned_col_count * sizeof(dx_collision_compact)) != 0 ||
 				memcmp(binned_compact, indirect_compact,
 					   indirect_col_count * sizeof(dx_collision_compact)) != 0) {
-				// We don't compare Work Graph results as the shaders are compiled with a different
-				// compiler flag (Shader Model 6.8) and produces slightly different results
-				fprintf(stderr,
-						"❌ Frame %u FAILED: Pipeline mismatch! GPU algorithms returned "
-						"different data.\n",
-						frame_index);
+				// We don't compare Work Graph results as they yield slightly different output.
+				// At first I thought it's because the compiler flags are different
+				// (Shader Model 6.8), but it's still the case after using the same flags for
+				// every algorithm.
+				printf("❌ Frame %u FAILED: Pipeline mismatch! GPU algorithms returned "
+					   "different data.\n", frame_index);
 				pipeline_match = false;
 			}
 		}
@@ -210,11 +200,11 @@ int main() {
 		if (actual_col_count > 0) {
 			actual_cols = (dx_collision_full*)malloc(
 				actual_col_count * sizeof(dx_collision_full));
-			
+
 			for (uint32_t j = 0; j < actual_col_count; ++j) {
 				dx_collision_compact* comp = &actual_compact[j];
 				dx_collision_full* full = &actual_cols[j];
-				
+
 				full->a_index = comp->a_index;
 				if (comp->b_index >= rigid_count) {
 					full->b_index = comp->b_index - rigid_count;
@@ -223,18 +213,18 @@ int main() {
 					full->b_index = comp->b_index;
 					full->b_type = 1;
 				}
-				
+
 				full->depth = comp->depth;
 				full->point_a[0] = comp->point_a[0];
 				full->point_a[1] = comp->point_a[1];
 				full->point_a[2] = comp->point_a[2];
-				
+
 				decode_octahedral(comp->normal, full->normal);
-				
+
 				full->point_b[0] = full->point_a[0] + full->normal[0] * full->depth;
 				full->point_b[1] = full->point_a[1] + full->normal[1] * full->depth;
 				full->point_b[2] = full->point_a[2] + full->normal[2] * full->depth;
-				
+
 				full->pad[0] = 0; full->pad[1] = 0; full->pad[2] = 0;
 			}
 			free(actual_compact);
@@ -255,15 +245,15 @@ int main() {
 
 			const char* type_names[] = {"Sphere", "Capsule", "Box", "Convex"};
 
-			fprintf(stderr, "  Body A (%s):\n", a.shape_type < 4 ? type_names[a.shape_type] : "Unknown");
-			fprintf(stderr, "    Pos:  (%f, %f, %f)\n", a.position[0], a.position[1], a.position[2]);
-			fprintf(stderr, "    Rot:  (%f, %f, %f, %f)\n", a.rotation[0], a.rotation[1], a.rotation[2], a.rotation[3]);
-			fprintf(stderr, "    Data: (%f, %f, %f, %f)\n", s_a.data[0], s_a.data[1], s_a.data[2], s_a.data[3]);
+			printf("  Body A (%s):\n", a.shape_type < 4 ? type_names[a.shape_type] : "Unknown");
+			printf("    Pos:  (%f, %f, %f)\n", a.position[0], a.position[1], a.position[2]);
+			printf("    Rot:  (%f, %f, %f, %f)\n", a.rotation[0], a.rotation[1], a.rotation[2], a.rotation[3]);
+			printf("    Data: (%f, %f, %f, %f)\n", s_a.data[0], s_a.data[1], s_a.data[2], s_a.data[3]);
 
-			fprintf(stderr, "  Body B (%s):\n", b.shape_type < 4 ? type_names[b.shape_type] : "Unknown");
-			fprintf(stderr, "    Pos:  (%f, %f, %f)\n", b.position[0], b.position[1], b.position[2]);
-			fprintf(stderr, "    Rot:  (%f, %f, %f, %f)\n", b.rotation[0], b.rotation[1], b.rotation[2], b.rotation[3]);
-			fprintf(stderr, "    Data: (%f, %f, %f, %f)\n", s_b.data[0], s_b.data[1], s_b.data[2], s_b.data[3]);
+			printf("  Body B (%s):\n", b.shape_type < 4 ? type_names[b.shape_type] : "Unknown");
+			printf("    Pos:  (%f, %f, %f)\n", b.position[0], b.position[1], b.position[2]);
+			printf("    Rot:  (%f, %f, %f, %f)\n", b.rotation[0], b.rotation[1], b.rotation[2], b.rotation[3]);
+			printf("    Data: (%f, %f, %f, %f)\n", s_b.data[0], s_b.data[1], s_b.data[2], s_b.data[3]);
 		};
 
 		bool passed = true;
@@ -315,8 +305,8 @@ int main() {
 				}
 
 				if (!depth_ok || !normal_ok || !pt_ok) {
-					fprintf(stderr, "❌ Frame %u FAILED: Math mismatch for pair (%u, %u type %u)\n",
-							frame_index, exp->a_index, exp->b_index, exp->b_type);
+					printf("❌ Frame %u FAILED: Math mismatch for pair (%u, %u type %u)\n",
+						   frame_index, exp->a_index, exp->b_index, exp->b_type);
 
 					float exp_len = sqrtf(exp->normal[0] * exp->normal[0] +
 										  exp->normal[1] * exp->normal[1] +
@@ -325,15 +315,13 @@ int main() {
 										  act->normal[1] * act->normal[1] +
 										  act->normal[2] * act->normal[2]);
 
-					fprintf(stderr, "  Expected: depth=%f, normal=(%f, %f, %f) len=%f, "
-									"pt_a=(%f, %f, %f)\n",
-							exp->depth, exp->normal[0], exp->normal[1], exp->normal[2], exp_len,
-							exp->point_a[0], exp->point_a[1], exp->point_a[2]);
+					printf("  Expected: depth=%f, normal=(%f, %f, %f) len=%f, pt_a=(%f, %f, %f)\n",
+						   exp->depth, exp->normal[0], exp->normal[1], exp->normal[2], exp_len,
+						   exp->point_a[0], exp->point_a[1], exp->point_a[2]);
 
-					fprintf(stderr, "  Actual:   depth=%f, normal=(%f, %f, %f) len=%f, "
-									"pt_a=(%f, %f, %f)\n",
-							act->depth, act->normal[0], act->normal[1], act->normal[2], act_len,
-							act->point_a[0], act->point_a[1], act->point_a[2]);
+					printf("  Actual:   depth=%f, normal=(%f, %f, %f) len=%f, pt_a=(%f, %f, %f)\n",
+						   act->depth, act->normal[0], act->normal[1], act->normal[2], act_len,
+						   act->point_a[0], act->point_a[1], act->point_a[2]);
 
 					print_body_details(exp->a_index, exp->b_index, exp->b_type);
 
@@ -346,9 +334,9 @@ int main() {
 				if (exp->depth < 0.0001f) {
 					i++;
 				} else {
-					fprintf(stderr, "❌ Frame %u FAILED: Missing expected pair (%u, %u type %u) "
-									"with depth=%f\n",
-							frame_index, exp->a_index, exp->b_index, exp->b_type, exp->depth);
+					printf("❌ Frame %u FAILED: Missing expected pair (%u, %u type %u) "
+						   "with depth=%f\n",
+						   frame_index, exp->a_index, exp->b_index, exp->b_type, exp->depth);
 
 					print_body_details(exp->a_index, exp->b_index, exp->b_type);
 
@@ -360,9 +348,8 @@ int main() {
 				if (act->depth < 0.0001f) {
 					j++;
 				} else {
-					fprintf(stderr, "❌ Frame %u FAILED: Extra GPU pair (%u, %u type %u) "
-									"with depth=%f\n",
-							frame_index, act->a_index, act->b_index, act->b_type, act->depth);
+					printf("❌ Frame %u FAILED: Extra GPU pair (%u, %u type %u) with depth=%f\n",
+						   frame_index, act->a_index, act->b_index, act->b_type, act->depth);
 
 					print_body_details(act->a_index, act->b_index, act->b_type);
 
