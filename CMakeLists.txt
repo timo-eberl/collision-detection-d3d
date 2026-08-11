@@ -168,6 +168,61 @@ add_custom_command(
 			${CMAKE_CURRENT_SOURCE_DIR}/src/collision_math.hlsli
 )
 
+# Compile shader (prefix_sum)
+add_custom_command(
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_init.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_exc.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_inc_max.h
+	COMMAND ${DXC_EXECUTABLE}
+		-E InitChainedScan -T cs_6_8 -O3 -Wno-conversion
+		-Vn prefix_sum_init
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_init.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/prefix_sum/prefix_sum.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E ChainedScanDecoupledLookback -T cs_6_8 -O3 -Wno-conversion
+		-Vn prefix_sum_exc
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_exc.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/prefix_sum/prefix_sum.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E ChainedScanDecoupledLookback -T cs_6_8 -O3 -Wno-conversion -DOP_MAX
+		-Vn prefix_sum_inc_max
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_inc_max.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/prefix_sum/prefix_sum.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/prefix_sum/prefix_sum.hlsl
+)
+
+# Compile shader (radix_sort)
+set(RS_BASE_FLAGS -DKEY_UINT -DPAYLOAD_UINT -DSORT_PAIRS -DSHOULD_ASCEND -DENABLE_16_BIT)
+set(RS_DXC_CMD ${DXC_EXECUTABLE} -T cs_6_8 -O3 -enable-16bit-types -Wno-conversion)
+
+# Radix Sort: NVIDIA Profile
+set(RS_NV_FLAGS ${RS_BASE_FLAGS} -DKEYS_PER_THREAD_15 -DPART_SIZE_7680)
+add_custom_command(
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_init.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_upsweep.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_scan.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_downsweep.h
+	COMMAND ${RS_DXC_CMD} ${RS_NV_FLAGS} -E InitDeviceRadixSort -Vn gpusort_nv_init -Fh ${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_init.h ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort/shaders/DeviceRadixSort.hlsl
+	COMMAND ${RS_DXC_CMD} ${RS_NV_FLAGS} -E Upsweep -Vn gpusort_nv_upsweep -Fh ${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_upsweep.h ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort/shaders/DeviceRadixSort.hlsl
+	COMMAND ${RS_DXC_CMD} ${RS_NV_FLAGS} -E Scan -Vn gpusort_nv_scan -Fh ${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_scan.h ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort/shaders/DeviceRadixSort.hlsl
+	COMMAND ${RS_DXC_CMD} ${RS_NV_FLAGS} -E Downsweep -Vn gpusort_nv_downsweep -Fh ${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_downsweep.h ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort/shaders/DeviceRadixSort.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort/shaders/DeviceRadixSort.hlsl
+)
+
+# Radix Sort: AMD Profile
+set(RS_AMD_FLAGS ${RS_BASE_FLAGS} -DLOCK_TO_W32 -DKEYS_PER_THREAD_5 -DPART_SIZE_2560 -DD_TOTAL_SMEM_4096)
+add_custom_command(
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_init.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_upsweep.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_scan.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_downsweep.h
+	COMMAND ${RS_DXC_CMD} ${RS_AMD_FLAGS} -E InitDeviceRadixSort -Vn gpusort_amd_init -Fh ${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_init.h ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort/shaders/DeviceRadixSort.hlsl
+	COMMAND ${RS_DXC_CMD} ${RS_AMD_FLAGS} -E Upsweep -Vn gpusort_amd_upsweep -Fh ${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_upsweep.h ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort/shaders/DeviceRadixSort.hlsl
+	COMMAND ${RS_DXC_CMD} ${RS_AMD_FLAGS} -E Scan -Vn gpusort_amd_scan -Fh ${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_scan.h ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort/shaders/DeviceRadixSort.hlsl
+	COMMAND ${RS_DXC_CMD} ${RS_AMD_FLAGS} -E Downsweep -Vn gpusort_amd_downsweep -Fh ${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_downsweep.h ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort/shaders/DeviceRadixSort.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort/shaders/DeviceRadixSort.hlsl
+)
+
 # Library
 add_library(${PROJECT_NAME}
 	src/shared_state.cpp
@@ -175,6 +230,8 @@ add_library(${PROJECT_NAME}
 	src/algo_simple_binned.cpp
 	src/algo_execute_indirect.cpp
 	src/algo_work_graphs.cpp
+	src/prefix_sum/prefix_sum.cpp
+	src/radix_sort/radix_sort.cpp
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_aabb_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_broad_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_narrow_shader.h
@@ -189,6 +246,17 @@ add_library(${PROJECT_NAME}
 	${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_init_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_aabb_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_broad_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_init.h
+	${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_exc.h
+	${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_inc_max.h
+	${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_init.h
+	${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_upsweep.h
+	${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_scan.h
+	${CMAKE_CURRENT_BINARY_DIR}/gpusort_nv_downsweep.h
+	${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_init.h
+	${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_upsweep.h
+	${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_scan.h
+	${CMAKE_CURRENT_BINARY_DIR}/gpusort_amd_downsweep.h
 )
 
 target_include_directories(${PROJECT_NAME}
