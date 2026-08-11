@@ -60,6 +60,42 @@ endif()
 
 message(STATUS "Using DXC: ${DXC_EXECUTABLE}")
 
+# Compile shader (broad_phase_grid_a builder)
+add_custom_command(
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/grid_a_load_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/grid_a_permute_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/grid_a_count_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/grid_a_assign_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/grid_a_bounds_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/grid_a_clear_shader.h
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_load_key_value -T cs_6_8 -O3 -Vn grid_a_load_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_load_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_permute_aabbs -T cs_6_8 -O3 -Vn grid_a_permute_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_permute_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_count_cells -T cs_6_8 -O3 -Vn grid_a_count_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_count_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_assign -T cs_6_8 -O3 -Vn grid_a_assign_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_assign_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_find_boundaries -T cs_6_8 -O3 -Vn grid_a_bounds_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_bounds_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_clear_cells -T cs_6_8 -O3 -Vn grid_a_clear_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_clear_shader.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
+	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
+			${CMAKE_CURRENT_SOURCE_DIR}/src/grid_math.hlsli
+)
+
 # Compile shader (algo_simple_naive)
 add_custom_command(
 	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_aabb_shader.h
@@ -226,12 +262,19 @@ add_custom_command(
 # Library
 add_library(${PROJECT_NAME}
 	src/shared_state.cpp
+	src/broad_phase_grid_a.cpp
 	src/algo_simple_naive.cpp
 	src/algo_simple_binned.cpp
 	src/algo_execute_indirect.cpp
 	src/algo_work_graphs.cpp
 	src/prefix_sum/prefix_sum.cpp
 	src/radix_sort/radix_sort.cpp
+	${CMAKE_CURRENT_BINARY_DIR}/grid_a_load_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/grid_a_permute_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/grid_a_count_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/grid_a_assign_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/grid_a_bounds_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/grid_a_clear_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_aabb_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_broad_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_narrow_shader.h
@@ -261,6 +304,8 @@ add_library(${PROJECT_NAME}
 
 target_include_directories(${PROJECT_NAME}
 	PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/include # public API
+	PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/prefix_sum
+	PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/radix_sort
 	PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
 )
 

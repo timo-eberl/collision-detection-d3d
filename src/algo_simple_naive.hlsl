@@ -8,12 +8,26 @@ cbuffer Constants : register(b0) {
 	uint pair_count;
 };
 
+// Grid Builder needs the exact same grid constants during phase 4 query
+cbuffer GridConstants : register(b1) {
+	int res_x; int res_y; int res_z;
+	float origin_x; float origin_y; float origin_z;
+	float cell_size;
+	uint grid_rigid_count; uint grid_static_count;
+};
+
 StructuredBuffer<dx_entity> entities_srv : register(t0);
 StructuredBuffer<dx_entity> statics_srv : register(t1);
 StructuredBuffer<dx_shape> shapes_srv : register(t2);
 StructuredBuffer<packed_aabb> aabb_rigids_srv : register(t3);
 StructuredBuffer<packed_aabb> aabb_statics_srv : register(t4);
 StructuredBuffer<dx_potential_pair> potential_pairs_srv : register(t5);
+
+// New SRVs for Grid Index Traversal
+StructuredBuffer<packed_aabb> sorted_aabbs_srv : register(t6);
+StructuredBuffer<uint> sorted_indices_srv : register(t7);
+StructuredBuffer<uint> sorted_vals_srv : register(t8);
+StructuredBuffer<uint> cell_ends_srv : register(t9);
 
 RWStructuredBuffer<packed_aabb> aabb_uav : register(u0);
 RWStructuredBuffer<dx_potential_pair> potential_pairs_uav : register(u1);
@@ -42,8 +56,8 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 		float half_height = s.data.x;
 		float radius = s.data.y;
 		float3 up = rotate_vector(float3(0.0f, 1.0f, 0.0f), e.rotation);
-		float3 p_a = e.position - up * half_height; // -up is p_a
-		float3 p_b = e.position + up * half_height; // +up is p_b
+		float3 p_a = e.position - up * half_height;
+		float3 p_b = e.position + up * half_height;
 		float3 min_p = min(p_a, p_b) - radius;
 		float3 max_p = max(p_a, p_b) + radius;
 		box.min_x = min_p.x; box.max_x = max_p.x;
@@ -65,43 +79,23 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 	aabb_uav[i] = box;
 }
 
-[numthreads(256, 1, 1)]
-void cs_broad_phase(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= rigid_count) return;
-
-	packed_aabb box_i = aabb_rigids_srv[i];
-
-	for (uint j = i + 1; j < rigid_count; ++j) {
-		if (aabb_overlap(box_i, aabb_rigids_srv[j])) {
-			uint idx;
-			InterlockedAdd(pair_count_uav[0], 1, idx);
-			if (idx < max_collisions) {
-				dx_potential_pair p;
-				p.a_index = i;
-				p.b_index = j;
-				p.b_type = 1;
-				p.pad = 0;
-				potential_pairs_uav[idx] = p;
-			}
-		}
-	}
-
-	for (uint k = 0; k < static_count; ++k) {
-		if (aabb_overlap(box_i, aabb_statics_srv[k])) {
-			uint idx;
-			InterlockedAdd(pair_count_uav[0], 1, idx);
-			if (idx < max_collisions) {
-				dx_potential_pair p;
-				p.a_index = i;
-				p.b_index = k;
-				p.b_type = 0;
-				p.pad = 0;
-				potential_pairs_uav[idx] = p;
-			}
-		}
+// -------------------------------------------------------------
+// GRID TRAVERSAL OVERLAP EMITTER
+// -------------------------------------------------------------
+void emit_overlap(uint a_idx, uint b_idx, uint b_type) {
+	uint idx;
+	InterlockedAdd(pair_count_uav[0], 1, idx);
+	if (idx < max_collisions) {
+		dx_potential_pair p;
+		p.a_index = a_idx;
+		p.b_index = b_idx;
+		p.b_type = b_type;
+		p.pad = 0;
+		potential_pairs_uav[idx] = p;
 	}
 }
+#include "grid_a_traversal.hlsli"
+// -------------------------------------------------------------
 
 [numthreads(256, 1, 1)]
 void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {

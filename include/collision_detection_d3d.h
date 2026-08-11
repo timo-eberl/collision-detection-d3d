@@ -28,6 +28,12 @@ typedef struct {
 	float normal[2];
 } dx_collision_compact; // 32 bytes
 
+typedef struct {
+	int res_x, res_y, res_z;
+	float origin_x, origin_y, origin_z;
+	float cell_size;
+} dx_grid_config;
+
 typedef struct dx_shared_state dx_shared_state;
 // Opaque state structs for each algorithm
 typedef struct dx_state_simple_naive dx_state_simple_naive;
@@ -47,6 +53,7 @@ void dx_state_simple_naive_destroy(dx_state_simple_naive* state);
 
 dx_collision_compact* dx_run_simple_naive(dx_shared_state* shared_state,
 										  dx_state_simple_naive* state,
+										  const dx_grid_config* config,
 										  const dx_entity* rigid_entities, uint32_t rigid_count,
 										  const dx_entity* static_entities, uint32_t static_count,
 										  const dx_shape* shapes, uint32_t shape_count,

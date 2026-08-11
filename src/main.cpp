@@ -295,10 +295,21 @@ int main() {
 			continue;
 		}
 
+		// Define the grid configuration based on the scene bounds + padding
+		dx_grid_config grid_config = {
+			.res_x = 20,
+			.res_y = 20,
+			.res_z = 34,
+			.origin_x = -50.0f,
+			.origin_y = -50.0f,
+			.origin_z = -85.0f,
+			.cell_size = 5.0f
+		};
+
 		uint32_t naive_col_count = 0;
-		dx_collision_compact* naive_compact = dx_run_simple_naive(
-			sh, state_naive, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
-			&naive_col_count);
+		dx_collision_compact* naive_compact =
+			dx_run_simple_naive(sh, state_naive, &grid_config, rigids, rigid_count, statics,
+								static_count, shapes, shape_count, true, &naive_col_count);
 
 		uint32_t binned_col_count = 0;
 		dx_collision_compact* binned_compact = dx_run_simple_binned(
