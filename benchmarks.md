@@ -76,22 +76,30 @@ RX 9070 XT:
 [dx12] execute_indirect (avg over 10) upload=0.710ms [0.693-0.713] aabb_prep=0.031ms [0.017-0.038] broad=18.481ms [17.903-19.097] dispatch_prep=0.023ms [0.013-0.025] narrow=0.086ms [0.069-0.090] gap_readback=0.172ms [0.136-0.193] readback=0.794ms [0.687-0.833] total=20.296ms cpu_total=22.781ms [21.670-28.316]
 [dx12] work_graphs (avg over 10) upload=0.711ms [0.691-0.716] aabb_prep=0.030ms [0.017-0.036] broad_phase=17.953ms [17.581-18.869] work_graph=0.377ms [0.347-0.396] gap_readback=0.181ms [0.152-0.284] readback=0.795ms [0.697-0.833] total=20.047ms cpu_total=21.864ms [21.170-23.153]
 
-## 1166f95becb685749c65dc97dc7e359a45b8ab6d (work graphs with grid a)
+## 1166f95becb685749c65dc97dc7e359a45b8ab6d (simple_naive with grid a)
 
-on RTX 3050:
+RTX 3050:
 [dx12] simple_naive_grid_a (avg over 10) upload=0.722ms [0.721-0.723] aabb_prep=0.044ms [0.043-0.047] build=1.094ms [0.548-3.270] query=15.928ms [13.443-21.813] gap_narrow=0.146ms [0.120-0.212] narrow=0.537ms [0.512-0.548] gap_readback=0.112ms [0.100-0.142] readback=1.360ms [1.254-1.405] total=19.943ms cpu_total=23.603ms [18.356-43.708]
 [dx12] simple_binned (avg over 10) upload=0.721ms [0.720-0.722] aabb_prep=0.044ms [0.043-0.051] broad=64.460ms [62.668-74.433] gap_narrow=0.179ms [0.152-0.268] narrow=0.402ms [0.387-0.422] gap_readback=0.133ms [0.114-0.141] readback=1.361ms [1.254-1.405] total=67.298ms cpu_total=68.660ms [66.724-78.680]
 [dx12] execute_indirect (avg over 10) upload=0.721ms [0.720-0.722] aabb_prep=0.044ms [0.043-0.045] broad=65.002ms [62.660-79.997] dispatch_prep=0.006ms [0.005-0.006] narrow=0.428ms [0.402-0.461] gap_readback=0.151ms [0.126-0.185] readback=1.361ms [1.254-1.405] total=67.713ms cpu_total=69.075ms [66.667-84.075]
 [dx12] work_graphs (avg over 10) upload=0.721ms [0.720-0.723] aabb_prep=0.045ms [0.043-0.052] broad_phase=63.695ms [62.508-69.186] work_graph=1.736ms [1.668-1.770] gap_readback=0.162ms [0.147-0.194] readback=1.360ms [1.253-1.404] total=67.719ms cpu_total=69.218ms [67.695-74.568]
 
-on RX 9070 XT:
+RX 9070 XT:
 [dx12] simple_naive_grid_a (avg over 10) upload=0.739ms [0.705-0.776] aabb_prep=0.047ms [0.021-0.102] build=1.264ms [0.490-5.186] query=14.784ms [9.951-27.632] gap_narrow=0.171ms [0.132-0.217] narrow=0.176ms [0.138-0.321] gap_readback=0.136ms [0.096-0.198] readback=0.895ms [0.703-1.249] total=18.213ms cpu_total=20.662ms [14.569-33.228]
 [dx12] simple_binned (avg over 10) upload=0.778ms [0.693-1.115] aabb_prep=0.036ms [0.018-0.048] broad=23.573ms [19.196-31.640] gap_narrow=0.200ms [0.142-0.376] narrow=0.118ms [0.067-0.258] gap_readback=0.273ms [0.092-1.580] readback=0.944ms [0.703-1.438] total=25.922ms cpu_total=27.868ms [22.575-39.211]
 [dx12] execute_indirect (avg over 10) upload=0.716ms [0.694-0.723] aabb_prep=0.033ms [0.016-0.050] broad=21.739ms [18.043-33.894] dispatch_prep=0.024ms [0.012-0.032] narrow=0.102ms [0.068-0.240] gap_readback=0.178ms [0.148-0.256] readback=0.862ms [0.701-1.276] total=23.653ms cpu_total=25.590ms [21.665-38.250]
 [dx12] work_graphs (avg over 10) upload=0.831ms [0.691-1.588] aabb_prep=0.032ms [0.016-0.046] broad_phase=21.163ms [17.942-31.327] work_graph=0.586ms [0.461-1.375] gap_readback=0.207ms [0.147-0.503] readback=0.925ms [0.716-1.152] total=23.746ms cpu_total=25.812ms [22.020-38.523]
 
-on RTX 5070 TI:
+RTX 5070 TI:
 [dx12] simple_naive_grid_a (avg over 10) upload=0.013ms [0.012-0.018] aabb_prep=0.013ms [0.013-0.015] build=0.634ms [0.320-1.838] query=8.139ms [6.993-10.839] gap_narrow=0.185ms [0.100-0.425] narrow=0.121ms [0.115-0.124] gap_readback=0.094ms [0.070-0.166] readback=0.186ms [0.164-0.232] total=9.384ms cpu_total=11.823ms [9.445-21.497]
 [dx12] simple_binned (avg over 10) upload=0.013ms [0.011-0.017] aabb_prep=0.013ms [0.012-0.013] broad=14.923ms [14.913-14.935] gap_narrow=0.166ms [0.112-0.292] narrow=0.085ms [0.079-0.088] gap_readback=0.107ms [0.076-0.154] readback=0.176ms [0.162-0.183] total=15.482ms cpu_total=16.743ms [16.548-17.063]
 [dx12] execute_indirect (avg over 10) upload=0.014ms [0.012-0.019] aabb_prep=0.013ms [0.012-0.013] broad=14.885ms [14.862-14.925] dispatch_prep=0.007ms [0.006-0.008] narrow=0.103ms [0.098-0.107] gap_readback=0.136ms [0.103-0.162] readback=0.177ms [0.161-0.187] total=15.334ms cpu_total=16.550ms [16.224-16.730]
 [dx12] work_graphs (avg over 10) upload=0.014ms [0.012-0.016] aabb_prep=0.013ms [0.012-0.013] broad_phase=14.823ms [14.796-14.908] work_graph=0.430ms [0.407-0.446] gap_readback=0.130ms [0.101-0.197] readback=0.175ms [0.163-0.181] total=15.585ms cpu_total=16.801ms [16.550-16.936]
+
+## 4f7a3d5ecff30b0144cbcd271a11ebf842325096 (grid a query optimized)
+
+RX 9070 XT:
+[dx12] simple_naive_grid_a (avg over 10) upload=0.750ms [0.703-0.819] aabb_prep=0.057ms [0.021-0.107] build=1.094ms [0.375-3.035] query=0.383ms [0.344-0.615] gap_narrow=0.172ms [0.090-0.423] narrow=0.172ms [0.141-0.243] gap_readback=0.148ms [0.100-0.332] readback=0.908ms [0.694-1.170] total=3.684ms cpu_total=6.161ms [4.808-12.302]
+[dx12] simple_binned (avg over 10) upload=0.717ms [0.690-0.725] aabb_prep=0.033ms [0.018-0.042] broad=21.891ms [20.431-24.145] gap_narrow=0.178ms [0.139-0.286] narrow=0.092ms [0.066-0.105] gap_readback=0.131ms [0.106-0.170] readback=0.812ms [0.692-0.858] total=23.854ms cpu_total=25.646ms [23.785-28.250]
+[dx12] execute_indirect (avg over 10) upload=0.720ms [0.694-0.736] aabb_prep=0.039ms [0.016-0.106] broad=19.296ms [18.538-22.411] dispatch_prep=0.024ms [0.013-0.028] narrow=0.085ms [0.068-0.095] gap_readback=0.183ms [0.144-0.291] readback=0.809ms [0.690-0.855] total=21.156ms cpu_total=22.974ms [22.230-26.145]
+[dx12] work_graphs (avg over 10) upload=0.713ms [0.692-0.719] aabb_prep=0.031ms [0.017-0.039] broad_phase=18.212ms [17.708-19.015] work_graph=0.501ms [0.454-0.525] gap_readback=0.168ms [0.149-0.180] readback=0.869ms [0.703-1.031] total=20.492ms cpu_total=22.992ms [21.536-28.692]
