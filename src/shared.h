@@ -42,6 +42,8 @@ struct dx_shared_state {
 	uint64_t fence_value;
 	void* fence_event;
 
+	bool is_amd;
+
 	// Input Upload Buffersy (on CPU, GPU readable)
 	ID3D12Resource* up_rigids;
 	size_t up_rigids_size;

@@ -38,6 +38,12 @@ extern "C" dx_shared_state* dx_shared_state_create(void) {
 											  sizeof(desc), desc);
 					fprintf(stderr, "[dx12] Initialized D3D12 Device on: %s\n",
 							SUCCEEDED(hr) ? desc : "unknown adapter");
+
+					DXCoreHardwareID hw_id = {};
+					if (SUCCEEDED(adapter->GetProperty(DXCoreAdapterProperty::HardwareID,
+													   sizeof(hw_id), &hw_id))) {
+						s->is_amd = (hw_id.vendorID == 0x1002);
+					}
 				}
 			}
 		}

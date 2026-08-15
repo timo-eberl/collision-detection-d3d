@@ -51,7 +51,7 @@ struct dx_state_simple_naive {
 dx_state_simple_naive* dx_state_simple_naive_create(dx_shared_state* sh) {
 	dx_state_simple_naive* s = (dx_state_simple_naive*)calloc(1, sizeof(dx_state_simple_naive));
 	
-	s->grid_builder = dx_grid_a_create(sh->device, false);
+	s->grid_builder = dx_grid_a_create(sh->device, sh->is_amd);
 
 	D3D12_ROOT_PARAMETER root_params[18] = {};
 
