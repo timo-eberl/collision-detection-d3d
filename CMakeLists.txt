@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 project(collision_dx LANGUAGES C CXX)
+set(CMAKE_CXX_STANDARD 20)
 
 option(CDDX_ENABLE_PROFILER "Print profiling messages to stderr" ON)
 
