@@ -17,6 +17,8 @@ StructuredBuffer<packed_aabb> aabb_statics_srv : register(t1);
 StructuredBuffer<uint> keys_in_srv : register(t2);
 StructuredBuffer<uint> vals_in_srv : register(t3);
 
+StructuredBuffer<packed_aabb> sorted_aabbs_srv_ro : register(t4);
+
 // Flexible UAVs based on phase
 RWStructuredBuffer<uint> keys_out_uav : register(u0);
 RWStructuredBuffer<uint> vals_out_uav : register(u1);
@@ -62,7 +64,7 @@ void cs_count_cells(uint3 DTid : SV_DispatchThreadID) {
 	uint i = DTid.x;
 	if (i >= num_elements) return;
 
-	packed_aabb b = sorted_aabbs_uav[i];
+	packed_aabb b = sorted_aabbs_srv_ro[i];
 	int cx0 = cell_coord(b.min_x, origin_x, cell_size, res_x);
 	int cy0 = cell_coord(b.min_y, origin_y, cell_size, res_y);
 	int cz0 = cell_coord(b.min_z, origin_z, cell_size, res_z);
@@ -78,7 +80,7 @@ void cs_assign(uint3 DTid : SV_DispatchThreadID) {
 	uint i = DTid.x;
 	if (i >= num_elements) return;
 
-	packed_aabb b = sorted_aabbs_uav[i];
+	packed_aabb b = sorted_aabbs_srv_ro[i];
 	int cx0 = cell_coord(b.min_x, origin_x, cell_size, res_x);
 	int cy0 = cell_coord(b.min_y, origin_y, cell_size, res_y);
 	int cz0 = cell_coord(b.min_z, origin_z, cell_size, res_z);
@@ -97,6 +99,7 @@ void cs_assign(uint3 DTid : SV_DispatchThreadID) {
 		}
 	}
 }
+
 
 [numthreads(256, 1, 1)]
 void cs_find_boundaries(uint3 DTid : SV_DispatchThreadID) {

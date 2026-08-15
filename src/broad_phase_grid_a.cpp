@@ -63,7 +63,7 @@ dx_state_grid_a* dx_grid_a_create(ID3D12Device10* device, bool is_amd) {
 	s->sort_ctx = dx_radix_sort_create(device, is_amd);
 	s->scan_ctx = dx_prefix_sum_create(device);
 
-	D3D12_ROOT_PARAMETER root_params[8] = {};
+	D3D12_ROOT_PARAMETER root_params[9] = {};
 	
 	// b0 (idx 0)
 	root_params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
@@ -72,24 +72,24 @@ dx_state_grid_a* dx_grid_a_create(ID3D12Device10* device, bool is_amd) {
 	root_params[0].Constants.Num32BitValues = 11;
 	root_params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	// SRVs: t0 to t3 (idx 1 to 4)
-	for (int i = 0; i < 4; ++i) {
+	// SRVs: t0 to t4 (idx 1 to 5)
+	for (int i = 0; i < 5; ++i) {
 		root_params[1 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
 		root_params[1 + i].Descriptor.ShaderRegister = i;
 		root_params[1 + i].Descriptor.RegisterSpace = 0;
 		root_params[1 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 	}
 
-	// UAVs: u0 to u2 (idx 5 to 7)
+	// UAVs: u0 to u2 (idx 6 to 8)
 	for (int i = 0; i < 3; ++i) {
-		root_params[5 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
-		root_params[5 + i].Descriptor.ShaderRegister = i;
-		root_params[5 + i].Descriptor.RegisterSpace = 0;
-		root_params[5 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		root_params[6 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+		root_params[6 + i].Descriptor.ShaderRegister = i;
+		root_params[6 + i].Descriptor.RegisterSpace = 0;
+		root_params[6 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 	}
 
 	D3D12_ROOT_SIGNATURE_DESC rs_desc = {};
-	rs_desc.NumParameters = 8;
+	rs_desc.NumParameters = 9;
 	rs_desc.pParameters = root_params;
 
 	ID3DBlob* sig = nullptr;
@@ -196,8 +196,8 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	constants[9] = 0; constants[10] = rigid_count;
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 11, constants, 0);
 	sh->cmd_list->SetComputeRootShaderResourceView(1, aabb_rigids); // t0
-	sh->cmd_list->SetComputeRootUnorderedAccessView(5, s->d_pre_keys_in->GetGPUVirtualAddress()); // u0
-	sh->cmd_list->SetComputeRootUnorderedAccessView(6, s->d_pre_vals_in->GetGPUVirtualAddress()); // u1
+	sh->cmd_list->SetComputeRootUnorderedAccessView(6, s->d_pre_keys_in->GetGPUVirtualAddress()); // u0
+	sh->cmd_list->SetComputeRootUnorderedAccessView(7, s->d_pre_vals_in->GetGPUVirtualAddress()); // u1
 	sh->cmd_list->Dispatch((rigid_count + 255) / 256, 1, 1);
 
 	if (static_count > 0) {
@@ -233,7 +233,7 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	sh->cmd_list->SetComputeRootShaderResourceView(1, aabb_rigids); // t0
 	if (static_count > 0) sh->cmd_list->SetComputeRootShaderResourceView(2, aabb_statics); // t1
 	sh->cmd_list->SetComputeRootShaderResourceView(4, s->d_pre_vals_in->GetGPUVirtualAddress()); // t3
-	sh->cmd_list->SetComputeRootUnorderedAccessView(7, s->d_sorted_aabbs->GetGPUVirtualAddress()); // u2
+	sh->cmd_list->SetComputeRootUnorderedAccessView(8, s->d_sorted_aabbs->GetGPUVirtualAddress()); // u2
 	sh->cmd_list->Dispatch((total_bodies + 255) / 256, 1, 1);
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -244,8 +244,8 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	ensure_dx_buffer(sh->device, &s->d_counts, &s->d_counts_size, total_padded, sizeof(uint32_t), 
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 	sh->cmd_list->SetPipelineState(s->pso_count);
-	sh->cmd_list->SetComputeRootUnorderedAccessView(5, s->d_counts->GetGPUVirtualAddress()); // u0
-	sh->cmd_list->SetComputeRootUnorderedAccessView(7, s->d_sorted_aabbs->GetGPUVirtualAddress()); // u2
+	sh->cmd_list->SetComputeRootShaderResourceView(5, s->d_sorted_aabbs->GetGPUVirtualAddress()); // t4
+	sh->cmd_list->SetComputeRootUnorderedAccessView(6, s->d_counts->GetGPUVirtualAddress()); // u0
 	sh->cmd_list->Dispatch((total_bodies + 255) / 256, 1, 1);
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -305,10 +305,10 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 
 	sh->cmd_list->SetPipelineState(s->pso_assign);
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 11, constants, 0);
-	sh->cmd_list->SetComputeRootShaderResourceView(3, s->d_offsets->GetGPUVirtualAddress());
-	sh->cmd_list->SetComputeRootUnorderedAccessView(5, s->d_keys_in->GetGPUVirtualAddress()); 
-	sh->cmd_list->SetComputeRootUnorderedAccessView(6, s->d_vals_in->GetGPUVirtualAddress()); 
-	sh->cmd_list->SetComputeRootUnorderedAccessView(7, s->d_sorted_aabbs->GetGPUVirtualAddress()); 
+	sh->cmd_list->SetComputeRootShaderResourceView(3, s->d_offsets->GetGPUVirtualAddress()); // t2
+	sh->cmd_list->SetComputeRootShaderResourceView(5, s->d_sorted_aabbs->GetGPUVirtualAddress()); // t4
+	sh->cmd_list->SetComputeRootUnorderedAccessView(6, s->d_keys_in->GetGPUVirtualAddress()); // u0
+	sh->cmd_list->SetComputeRootUnorderedAccessView(7, s->d_vals_in->GetGPUVirtualAddress()); // u1
 	sh->cmd_list->Dispatch((total_bodies + 255) / 256, 1, 1);
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -340,7 +340,7 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	sh->cmd_list->SetPipelineState(s->pso_clear);
 	constants[10] = cells_padded;
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 11, constants, 0);
-	sh->cmd_list->SetComputeRootUnorderedAccessView(5, s->d_cell_ends->GetGPUVirtualAddress());
+	sh->cmd_list->SetComputeRootUnorderedAccessView(6, s->d_cell_ends->GetGPUVirtualAddress()); // u0
 	sh->cmd_list->Dispatch((cells_padded + 255) / 256, 1, 1);
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -350,8 +350,8 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	sh->cmd_list->SetPipelineState(s->pso_bounds);
 	constants[10] = total_keys; 
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 11, constants, 0);
-	sh->cmd_list->SetComputeRootShaderResourceView(3, s->d_keys_in->GetGPUVirtualAddress());
-	sh->cmd_list->SetComputeRootUnorderedAccessView(5, s->d_cell_ends->GetGPUVirtualAddress());
+	sh->cmd_list->SetComputeRootShaderResourceView(3, s->d_keys_in->GetGPUVirtualAddress()); // t2
+	sh->cmd_list->SetComputeRootUnorderedAccessView(6, s->d_cell_ends->GetGPUVirtualAddress()); // u0
 	sh->cmd_list->Dispatch((total_keys + 255) / 256, 1, 1);
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
