@@ -2,15 +2,10 @@
 #include "grid_math.hlsli"
 
 cbuffer GridConstants : register(b0) {
-	int res_x;
-	int res_y;
-	int res_z;
-	float origin_x;
-	float origin_y;
-	float origin_z;
+	int res_x; int res_y; int res_z;
+	float origin_x; float origin_y; float origin_z;
 	float cell_size;
-	uint rigid_count;
-	uint static_count;
+	uint rigid_count; uint static_count;
 	uint val_offset;
 	uint num_elements; // general limit bounds
 };

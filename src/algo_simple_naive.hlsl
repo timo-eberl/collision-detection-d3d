@@ -8,12 +8,13 @@ cbuffer Constants : register(b0) {
 	uint pair_count;
 };
 
-// Grid Builder needs the exact same grid constants during phase 4 query
 cbuffer GridConstants : register(b1) {
 	int res_x; int res_y; int res_z;
 	float origin_x; float origin_y; float origin_z;
 	float cell_size;
 	uint grid_rigid_count; uint grid_static_count;
+	// the above grid constants during phase 4 need to be the same
+	uint total_keys; uint dispatch_stride;
 };
 
 StructuredBuffer<dx_entity> entities_srv : register(t0);
@@ -23,11 +24,12 @@ StructuredBuffer<packed_aabb> aabb_rigids_srv : register(t3);
 StructuredBuffer<packed_aabb> aabb_statics_srv : register(t4);
 StructuredBuffer<dx_potential_pair> potential_pairs_srv : register(t5);
 
-// New SRVs for Grid Index Traversal
-StructuredBuffer<packed_aabb> sorted_aabbs_srv : register(t6);
-StructuredBuffer<uint> sorted_indices_srv : register(t7);
-StructuredBuffer<uint> sorted_vals_srv : register(t8);
-StructuredBuffer<uint> cell_ends_srv : register(t9);
+// Expanded SRVs for Flat Traversal
+StructuredBuffer<uint> sorted_keys_srv : register(t6);
+StructuredBuffer<packed_aabb> sorted_aabbs_srv : register(t7);
+StructuredBuffer<uint> sorted_indices_srv : register(t8);
+StructuredBuffer<uint> sorted_vals_srv : register(t9);
+StructuredBuffer<uint> cell_ends_srv : register(t10);
 
 RWStructuredBuffer<packed_aabb> aabb_uav : register(u0);
 RWStructuredBuffer<dx_potential_pair> potential_pairs_uav : register(u1);

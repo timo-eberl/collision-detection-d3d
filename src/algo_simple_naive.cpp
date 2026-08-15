@@ -48,13 +48,12 @@ struct dx_state_simple_naive {
 	size_t rb_pair_count_size;
 };
 
-extern "C" dx_state_simple_naive* dx_state_simple_naive_create(dx_shared_state* sh) {
+dx_state_simple_naive* dx_state_simple_naive_create(dx_shared_state* sh) {
 	dx_state_simple_naive* s = (dx_state_simple_naive*)calloc(1, sizeof(dx_state_simple_naive));
 	
-	// Default to false for AMD hardware flag unless detected otherwise
 	s->grid_builder = dx_grid_a_create(sh->device, false);
 
-	D3D12_ROOT_PARAMETER root_params[17] = {};
+	D3D12_ROOT_PARAMETER root_params[18] = {};
 
 	// b0: Constants
 	root_params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
@@ -63,15 +62,15 @@ extern "C" dx_state_simple_naive* dx_state_simple_naive_create(dx_shared_state* 
 	root_params[0].Constants.Num32BitValues = 5;
 	root_params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	// b1: GridConstants
+	// b1: GridConstants (Expanded to 11 for total_keys and stride)
 	root_params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
 	root_params[1].Constants.ShaderRegister = 1;
 	root_params[1].Constants.RegisterSpace = 0;
-	root_params[1].Constants.Num32BitValues = 9;
+	root_params[1].Constants.Num32BitValues = 11;
 	root_params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	// SRVs: t0 to t9
-	for (int i = 0; i < 10; ++i) {
+	// SRVs: t0 to t10
+	for (int i = 0; i < 11; ++i) {
 		root_params[2 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
 		root_params[2 + i].Descriptor.ShaderRegister = i;
 		root_params[2 + i].Descriptor.RegisterSpace = 0;
@@ -80,14 +79,14 @@ extern "C" dx_state_simple_naive* dx_state_simple_naive_create(dx_shared_state* 
 
 	// UAVs: u0 to u4
 	for (int i = 0; i < 5; ++i) {
-		root_params[12 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
-		root_params[12 + i].Descriptor.ShaderRegister = i;
-		root_params[12 + i].Descriptor.RegisterSpace = 0;
-		root_params[12 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		root_params[13 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+		root_params[13 + i].Descriptor.ShaderRegister = i;
+		root_params[13 + i].Descriptor.RegisterSpace = 0;
+		root_params[13 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 	}
 
 	D3D12_ROOT_SIGNATURE_DESC rs_desc = {};
-	rs_desc.NumParameters = 17;
+	rs_desc.NumParameters = 18;
 	rs_desc.pParameters = root_params;
 
 	ID3DBlob* signature = nullptr;
@@ -129,7 +128,7 @@ extern "C" dx_state_simple_naive* dx_state_simple_naive_create(dx_shared_state* 
 	return s;
 }
 
-extern "C" void dx_state_simple_naive_destroy(dx_state_simple_naive* s) {
+void dx_state_simple_naive_destroy(dx_state_simple_naive* s) {
 	if (!s) return;
 	dx_grid_a_destroy(s->grid_builder);
 	if (s->pso_aabb_prep) s->pso_aabb_prep->Release();
@@ -144,7 +143,7 @@ extern "C" void dx_state_simple_naive_destroy(dx_state_simple_naive* s) {
 	free(s);
 }
 
-extern "C" dx_collision_compact*
+dx_collision_compact*
 dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_grid_config* config,
 					const dx_entity* rigids, uint32_t rigid_count, const dx_entity* statics, 
 					uint32_t static_count, const dx_shape* shapes, uint32_t shape_count, 
@@ -227,7 +226,7 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 	
 	// Prep Rigids
 	sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress()); // t0
-	sh->cmd_list->SetComputeRootUnorderedAccessView(12, state->d_aabb_rigids->GetGPUVirtualAddress()); // u0
+	sh->cmd_list->SetComputeRootUnorderedAccessView(13, state->d_aabb_rigids->GetGPUVirtualAddress()); // u0
 	sh->cmd_list->Dispatch(grid_size, 1, 1);
 
 	// Prep Statics
@@ -235,7 +234,7 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 		constants[0] = static_count;
 		sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
 		sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_statics->GetGPUVirtualAddress()); // t0
-		sh->cmd_list->SetComputeRootUnorderedAccessView(12, state->d_aabb_statics->GetGPUVirtualAddress()); // u0
+		sh->cmd_list->SetComputeRootUnorderedAccessView(13, state->d_aabb_statics->GetGPUVirtualAddress()); // u0
 		uint32_t static_grid = (static_count + block_size - 1) / block_size;
 		sh->cmd_list->Dispatch(static_grid, 1, 1);
 	}
@@ -253,9 +252,9 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 	sh->cmd_list->Barrier(1, &bg_prep);
 
 	// --- Build Grid ---
-	dx_grid_a_build(sh, state->grid_builder, config, rigid_count, static_count, 
-					state->d_aabb_rigids->GetGPUVirtualAddress(),
-					static_count > 0 ? state->d_aabb_statics->GetGPUVirtualAddress() : 0);
+	uint32_t total_keys = dx_grid_a_build(sh, state->grid_builder, config, rigid_count, static_count, 
+	                                      state->d_aabb_rigids->GetGPUVirtualAddress(),
+	                                      static_count > 0 ? state->d_aabb_statics->GetGPUVirtualAddress() : 0);
 	
 	D3D12_GLOBAL_BARRIER gb_build = {};
 	gb_build.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
@@ -267,39 +266,40 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 
 	dx_profile_step(&prof, sh, "build");
 
-	// --- Broad Phase (Grid Traversal) ---
-	sh->cmd_list->SetComputeRootSignature(state->root_sig);
-	sh->cmd_list->SetPipelineState(state->pso_broad);
+	if (total_keys > 0) {
+		// --- Broad Phase (Grid Traversal) ---
+		sh->cmd_list->SetComputeRootSignature(state->root_sig);
+		sh->cmd_list->SetPipelineState(state->pso_broad);
 
-	// RE-BIND b0: The root signature change invalidated our previous bindings!
-	uint32_t constants_bp[5] = { rigid_count, rigid_count, static_count, kernel_max, 0 };
-	sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants_bp, 0);
+		uint32_t constants_bp[5] = { rigid_count, rigid_count, static_count, kernel_max, 0 };
+		sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants_bp, 0);
 
-	uint32_t grid_constants[9] = {
-		(uint32_t)config->res_x, (uint32_t)config->res_y, (uint32_t)config->res_z,
-		*(uint32_t*)&config->origin_x, *(uint32_t*)&config->origin_y, *(uint32_t*)&config->origin_z,
-		*(uint32_t*)&config->cell_size, rigid_count, static_count
-	};
-	sh->cmd_list->SetComputeRoot32BitConstants(1, 9, grid_constants, 0);
+		uint32_t dispatch_stride = 2048 * block_size;
+		uint32_t grid_constants[11] = {
+			(uint32_t)config->res_x, (uint32_t)config->res_y, (uint32_t)config->res_z,
+			*(uint32_t*)&config->origin_x, *(uint32_t*)&config->origin_y, *(uint32_t*)&config->origin_z,
+			*(uint32_t*)&config->cell_size, rigid_count, static_count, total_keys, dispatch_stride
+		};
+		sh->cmd_list->SetComputeRoot32BitConstants(1, 11, grid_constants, 0);
 
-	// Bind builder outputs
-	sh->cmd_list->SetComputeRootShaderResourceView(8, dx_grid_a_get_sorted_aabbs(state->grid_builder)); // t6
-	sh->cmd_list->SetComputeRootShaderResourceView(9, dx_grid_a_get_sorted_indices(state->grid_builder)); // t7
-	sh->cmd_list->SetComputeRootShaderResourceView(10, dx_grid_a_get_sorted_vals(state->grid_builder)); // t8
-	sh->cmd_list->SetComputeRootShaderResourceView(11, dx_grid_a_get_cell_ends(state->grid_builder)); // t9
+		// Bind expanded builder outputs
+		sh->cmd_list->SetComputeRootShaderResourceView(8, dx_grid_a_get_sorted_keys(state->grid_builder)); // t6
+		sh->cmd_list->SetComputeRootShaderResourceView(9, dx_grid_a_get_sorted_aabbs(state->grid_builder)); // t7
+		sh->cmd_list->SetComputeRootShaderResourceView(10, dx_grid_a_get_sorted_indices(state->grid_builder)); // t8
+		sh->cmd_list->SetComputeRootShaderResourceView(11, dx_grid_a_get_sorted_vals(state->grid_builder)); // t9
+		sh->cmd_list->SetComputeRootShaderResourceView(12, dx_grid_a_get_cell_ends(state->grid_builder)); // t10
 
-	// u1: potential_pairs, u2: pair_count
-	sh->cmd_list->SetComputeRootUnorderedAccessView(13, state->d_potential_pairs->GetGPUVirtualAddress());
-	sh->cmd_list->SetComputeRootUnorderedAccessView(14, state->d_pair_count->GetGPUVirtualAddress());
+		sh->cmd_list->SetComputeRootUnorderedAccessView(14, state->d_potential_pairs->GetGPUVirtualAddress()); // u1
+		sh->cmd_list->SetComputeRootUnorderedAccessView(15, state->d_pair_count->GetGPUVirtualAddress()); // u2
 
-	PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Broad Dispatch");
-	uint32_t total_bodies = rigid_count + static_count;
-	uint32_t bp_grid_size = (total_bodies + block_size - 1) / block_size;
-	sh->cmd_list->Dispatch(bp_grid_size, 1, 1);
-	PIXEndEvent(sh->cmd_list);
+		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Broad Dispatch");
+		sh->cmd_list->Dispatch(2048, 1, 1);
+		PIXEndEvent(sh->cmd_list);
+	}
 	
 	dx_profile_step(&prof, sh, "query");
 
+	// Safely barrier and readback even if total_keys == 0 (pair_count will be exactly 0)
 	D3D12_GLOBAL_BARRIER gb_broad = {};
 	gb_broad.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 	gb_broad.SyncAfter = D3D12_BARRIER_SYNC_COPY | D3D12_BARRIER_SYNC_COMPUTE_SHADING;
@@ -346,8 +346,8 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 		sh->cmd_list->SetComputeRootShaderResourceView(4, sh->d_shapes->GetGPUVirtualAddress()); // t2
 		sh->cmd_list->SetComputeRootShaderResourceView(7, state->d_potential_pairs->GetGPUVirtualAddress()); // t5
 
-		sh->cmd_list->SetComputeRootUnorderedAccessView(15, sh->d_collisions->GetGPUVirtualAddress()); // u3
-		sh->cmd_list->SetComputeRootUnorderedAccessView(16, sh->d_col_count->GetGPUVirtualAddress()); // u4
+		sh->cmd_list->SetComputeRootUnorderedAccessView(16, sh->d_collisions->GetGPUVirtualAddress()); // u3
+		sh->cmd_list->SetComputeRootUnorderedAccessView(17, sh->d_col_count->GetGPUVirtualAddress()); // u4
 
 		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 255), "Phase: Narrow Dispatch");
 		uint32_t narrow_grid_size = (pair_count + block_size - 1) / block_size;
