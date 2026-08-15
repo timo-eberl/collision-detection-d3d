@@ -192,7 +192,13 @@ extern "C" dx_state_work_graphs* dx_state_work_graphs_create(dx_shared_state* sh
 
 	ID3D12StateObjectProperties1* so_props = nullptr;
 	s->work_graph_state_object->QueryInterface(IID_PPV_ARGS(&so_props));
+#ifdef _MSC_VER
+	// MSVC uses return-by-value
+	s->wg_program_id = so_props->GetProgramIdentifier(L"CollisionGraph");
+#else
+	// GCC (DirectX-Headers) requires an explicit output pointer
 	so_props->GetProgramIdentifier(&s->wg_program_id, L"CollisionGraph");
+#endif
 
 	ID3D12WorkGraphProperties* wg_props = nullptr;
 	s->work_graph_state_object->QueryInterface(IID_PPV_ARGS(&wg_props));

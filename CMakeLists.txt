@@ -325,8 +325,13 @@ if(UNIX)
 	target_link_libraries(${PROJECT_NAME} PRIVATE DirectX-Headers DirectX-Guids ${D3D12_LIB} ${DXCORE_LIB})
 else()
 	if(MSVC)
-		target_link_directories(${PROJECT_NAME} PRIVATE "${winpixeventruntime_SOURCE_DIR}/bin/x64")
-		target_link_libraries(${PROJECT_NAME} PRIVATE DirectX-Headers DirectX-Guids d3d12 dxcore WinPixEventRuntime)
+		target_link_libraries(${PROJECT_NAME} PRIVATE
+			DirectX-Headers
+			DirectX-Guids
+			d3d12
+			dxcore
+			"${winpixeventruntime_SOURCE_DIR}/bin/x64/WinPixEventRuntime.lib"
+		)
 	else()
 		target_link_libraries(${PROJECT_NAME} PRIVATE DirectX-Headers DirectX-Guids d3d12 dxcore)
 	endif()
