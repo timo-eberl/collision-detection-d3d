@@ -19,6 +19,11 @@ The input and expected output (`collision_test_data.bin`) can be generated with 
 cmake -S . -B build_release/ -DCMAKE_BUILD_TYPE=Release -DTICS_ENABLE_DEBUG_VIEW=OFF -DTICS_BUILD_TESTS=OFF -DNARROW_BENCHMARK_STEPS=200 -DNARROW_BENCHMARK_PARTICLE_COUNT=100000 && cmake --build build_release/ --config Release && ./build_release/bin/benchmark_narrowphase
 ```
 
+Build and run this project in RelWithDebInfo Configuration:
+```bash
+cmake -S . -B build/relwithdebinfo/ -DCDDX_ENABLE_PROFILER=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build/relwithdebinfo/ --config RelWithDebInfo && build/relwithdebinfo/collision_dx_app.exe
+```
+
 ## To-Do (for a later point)
 
 - [x] Also do transformations (don't just take pre transformed collision data)
@@ -26,3 +31,9 @@ cmake -S . -B build_release/ -DCMAKE_BUILD_TYPE=Release -DTICS_ENABLE_DEBUG_VIEW
 - [ ] Use groupshared memory for shape data
 - [x] Reduce output to 32 byte: `uint32_t a_index; uint32_t b_index; float depth; float point_a[3]; float normal[2];`
 - [ ] Implement a proper broad phase
+
+## Attribution
+
+Third-party code and the respective licenses can be found in the following directories:
+- `src/prefix_sum`
+- `src/radix_sort`
