@@ -26,13 +26,11 @@ struct dx_potential_pair {
 typedef struct { float min_x, max_x, min_y, max_y, min_z, max_z; } packed_aabb;
 
 // Matches D3D12_NODE_GPU_INPUT memory layout.
-// Aligned to 32 bytes to ensure the 8-byte rule for pointer alignment.
 struct dx_node_gpu_input {
 	uint32_t entrypoint_index;
 	uint32_t num_records;
 	uint64_t records_address;
 	uint64_t records_stride;
-	uint64_t padding;
 };
 
 struct dx_state_work_graphs {
