@@ -12,6 +12,11 @@
 
 #include <string.h>
 
+static void clear_grid_a_bindings(ID3D12GraphicsCommandList7* cmd) {
+	for (int i = 1; i <= 5; ++i) cmd->SetComputeRootShaderResourceView(i, 0);
+	for (int i = 6; i <= 8; ++i) cmd->SetComputeRootUnorderedAccessView(i, 0);
+}
+
 struct dx_state_grid_a {
 	dx_radix_sort_context* sort_ctx;
 	dx_prefix_sum_context* scan_ctx;
@@ -163,27 +168,6 @@ void dx_grid_a_destroy(dx_state_grid_a* s) {
 	free(s);
 }
 
-static void rebind_grid_a_state(ID3D12GraphicsCommandList7* cmd, dx_state_grid_a* s,
-								D3D12_GPU_VIRTUAL_ADDRESS aabb_rigids,
-								D3D12_GPU_VIRTUAL_ADDRESS aabb_statics, uint32_t static_count) {
-	cmd->SetComputeRootSignature(s->root_sig);
-	
-	D3D12_GPU_VIRTUAL_ADDRESS dummy_srv = aabb_rigids;
-	D3D12_GPU_VIRTUAL_ADDRESS statics_srv = static_count > 0 ? aabb_statics : aabb_rigids;
-	
-	// Rebind all 5 SRVs to ensure no D3D12 unbound descriptor warnings
-	cmd->SetComputeRootShaderResourceView(1, aabb_rigids); // t0
-	cmd->SetComputeRootShaderResourceView(2, statics_srv); // t1
-	cmd->SetComputeRootShaderResourceView(3, dummy_srv);   // t2
-	cmd->SetComputeRootShaderResourceView(4, dummy_srv);   // t3
-	cmd->SetComputeRootShaderResourceView(5, dummy_srv);   // t4
-	
-	// Rebind all 3 UAVs to valid, non-aliasing buffers
-	cmd->SetComputeRootUnorderedAccessView(6, s->d_pre_keys_in->GetGPUVirtualAddress());  // u0
-	cmd->SetComputeRootUnorderedAccessView(7, s->d_pre_vals_in->GetGPUVirtualAddress());  // u1
-	cmd->SetComputeRootUnorderedAccessView(8, s->d_pre_keys_out->GetGPUVirtualAddress()); // u2
-}
-
 uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
                          const dx_grid_config* config, uint32_t rigid_count,
                          uint32_t static_count, D3D12_GPU_VIRTUAL_ADDRESS aabb_rigids,
@@ -210,7 +194,8 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
 					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 
-	rebind_grid_a_state(sh->cmd_list, s, aabb_rigids, aabb_statics, static_count);
+	sh->cmd_list->SetComputeRootSignature(s->root_sig);
+	clear_grid_a_bindings(sh->cmd_list);
 
 	// Phase 0a: Load
 	sh->cmd_list->SetPipelineState(s->pso_load);
@@ -247,7 +232,8 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	// Phase 0c: Permute
 	ensure_dx_buffer(sh->device, &s->d_sorted_aabbs, &s->d_sorted_aabbs_size, total_padded, 24,
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-	rebind_grid_a_state(sh->cmd_list, s, aabb_rigids, aabb_statics, static_count);
+	sh->cmd_list->SetComputeRootSignature(s->root_sig);
+	clear_grid_a_bindings(sh->cmd_list);
 	sh->cmd_list->SetPipelineState(s->pso_permute);
 	constants[10] = total_bodies;
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 11, constants, 0);
@@ -308,7 +294,8 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	uint32_t total_keys_padded = (total_keys + 3) & ~3;
 
 	// Back to execution
-	rebind_grid_a_state(sh->cmd_list, s, aabb_rigids, aabb_statics, static_count);
+	sh->cmd_list->SetComputeRootSignature(s->root_sig);
+	clear_grid_a_bindings(sh->cmd_list);
 
 	// Phase 1c: Assign
 	ensure_dx_buffer(sh->device, &s->d_keys_in, &s->d_keys_in_size, total_keys_padded,
@@ -355,7 +342,8 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	ensure_dx_buffer(sh->device, &s->d_cell_ends, &s->d_cell_ends_size, cells_padded, sizeof(uint32_t),
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 
-	rebind_grid_a_state(sh->cmd_list, s, aabb_rigids, aabb_statics, static_count);
+	sh->cmd_list->SetComputeRootSignature(s->root_sig);
+	clear_grid_a_bindings(sh->cmd_list);
 
 	// 3a. Clear cell ends
 	sh->cmd_list->SetPipelineState(s->pso_clear);
@@ -392,8 +380,18 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 }
 
 // Accessors
-D3D12_GPU_VIRTUAL_ADDRESS dx_grid_a_get_sorted_keys(dx_state_grid_a* s) { return s->d_keys_in->GetGPUVirtualAddress(); }
-D3D12_GPU_VIRTUAL_ADDRESS dx_grid_a_get_sorted_aabbs(dx_state_grid_a* s) { return s->d_sorted_aabbs->GetGPUVirtualAddress(); }
-D3D12_GPU_VIRTUAL_ADDRESS dx_grid_a_get_sorted_indices(dx_state_grid_a* s) { return s->d_pre_vals_in->GetGPUVirtualAddress(); }
-D3D12_GPU_VIRTUAL_ADDRESS dx_grid_a_get_sorted_vals(dx_state_grid_a* s) { return s->d_vals_in->GetGPUVirtualAddress(); }
-D3D12_GPU_VIRTUAL_ADDRESS dx_grid_a_get_cell_ends(dx_state_grid_a* s) { return s->d_cell_ends->GetGPUVirtualAddress(); }
+D3D12_GPU_VIRTUAL_ADDRESS dx_grid_a_get_sorted_keys(dx_state_grid_a* s) {
+	return s->d_keys_in ? s->d_keys_in->GetGPUVirtualAddress() : 0;
+}
+D3D12_GPU_VIRTUAL_ADDRESS dx_grid_a_get_sorted_aabbs(dx_state_grid_a* s) {
+	return s->d_sorted_aabbs ? s->d_sorted_aabbs->GetGPUVirtualAddress() : 0;
+}
+D3D12_GPU_VIRTUAL_ADDRESS dx_grid_a_get_sorted_indices(dx_state_grid_a* s) {
+	return s->d_pre_vals_in ? s->d_pre_vals_in->GetGPUVirtualAddress() : 0;
+}
+D3D12_GPU_VIRTUAL_ADDRESS dx_grid_a_get_sorted_vals(dx_state_grid_a* s) {
+	return s->d_vals_in ? s->d_vals_in->GetGPUVirtualAddress() : 0;
+}
+D3D12_GPU_VIRTUAL_ADDRESS dx_grid_a_get_cell_ends(dx_state_grid_a* s) {
+	return s->d_cell_ends ? s->d_cell_ends->GetGPUVirtualAddress() : 0;
+}

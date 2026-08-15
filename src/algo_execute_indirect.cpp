@@ -57,6 +57,28 @@ struct dx_state_execute_indirect {
 	size_t d_indirect_args_size;
 };
 
+static void bind_universal_context(ID3D12GraphicsCommandList7* cmd, dx_shared_state* sh,
+								   dx_state_execute_indirect* state, uint32_t static_count) {
+	D3D12_GPU_VIRTUAL_ADDRESS rigids = sh->d_rigids->GetGPUVirtualAddress();
+	D3D12_GPU_VIRTUAL_ADDRESS statics = static_count > 0 ? sh->d_statics->GetGPUVirtualAddress() : rigids;
+	D3D12_GPU_VIRTUAL_ADDRESS aabb_r = state->d_aabb_rigids->GetGPUVirtualAddress();
+	D3D12_GPU_VIRTUAL_ADDRESS aabb_s = static_count > 0 ? state->d_aabb_statics->GetGPUVirtualAddress() : aabb_r;
+
+	cmd->SetComputeRootShaderResourceView(1, rigids);
+	cmd->SetComputeRootShaderResourceView(2, statics);
+	cmd->SetComputeRootShaderResourceView(3, sh->d_shapes->GetGPUVirtualAddress());
+	cmd->SetComputeRootShaderResourceView(4, aabb_r);
+	cmd->SetComputeRootShaderResourceView(5, aabb_s);
+	cmd->SetComputeRootShaderResourceView(6, state->d_potential_pairs->GetGPUVirtualAddress());
+
+	cmd->SetComputeRootUnorderedAccessView(7, 0); // u0 set per-dispatch
+	cmd->SetComputeRootUnorderedAccessView(8, state->d_potential_pairs->GetGPUVirtualAddress());
+	cmd->SetComputeRootUnorderedAccessView(9, state->d_pair_count->GetGPUVirtualAddress());
+	cmd->SetComputeRootUnorderedAccessView(10, sh->d_collisions->GetGPUVirtualAddress());
+	cmd->SetComputeRootUnorderedAccessView(11, sh->d_col_count->GetGPUVirtualAddress());
+	cmd->SetComputeRootUnorderedAccessView(12, state->d_indirect_args->GetGPUVirtualAddress());
+}
+
 extern "C" dx_state_execute_indirect* dx_state_execute_indirect_create(dx_shared_state* sh) {
 	dx_state_execute_indirect* s = (dx_state_execute_indirect*)calloc(1, sizeof(dx_state_execute_indirect));
 
@@ -243,16 +265,18 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state, c
 	sh->cmd_list->SetComputeRootSignature(state->root_sig);
 	sh->cmd_list->SetPipelineState(state->pso_aabb_prep);
 
+	bind_universal_context(sh->cmd_list, sh, state, static_count);
+
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 255, 0), "Phase: AABB Prep");
 
 	uint32_t constants[6] = { rigid_count, rigid_count, static_count, kernel_max, 0, 0 };
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 6, constants, 0);
 
-	sh->cmd_list->SetComputeRootShaderResourceView(3, sh->d_shapes->GetGPUVirtualAddress()); // t2
-	sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
+	// Prep Rigids
 	sh->cmd_list->SetComputeRootUnorderedAccessView(7, state->d_aabb_rigids->GetGPUVirtualAddress()); // u0
 	sh->cmd_list->Dispatch(grid_size, 1, 1);
 
+	// Prep Statics
 	if (statics_changed && static_count > 0) {
 		constants[0] = static_count;
 		sh->cmd_list->SetComputeRoot32BitConstants(0, 6, constants, 0);
@@ -282,22 +306,7 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state, c
 	constants[3] = kernel_max;
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 6, constants, 0);
 
-	sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
-	if (static_count > 0) {
-		sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_statics->GetGPUVirtualAddress()); // t1
-	} else {
-		sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress());
-	}
-
-	sh->cmd_list->SetComputeRootShaderResourceView(4, state->d_aabb_rigids->GetGPUVirtualAddress()); // t3
-	if (static_count > 0) {
-		sh->cmd_list->SetComputeRootShaderResourceView(5, state->d_aabb_statics->GetGPUVirtualAddress()); // t4
-	} else {
-		sh->cmd_list->SetComputeRootShaderResourceView(5, sh->d_rigids->GetGPUVirtualAddress());
-	}
-
-	sh->cmd_list->SetComputeRootUnorderedAccessView(8, state->d_potential_pairs->GetGPUVirtualAddress()); // u1
-	sh->cmd_list->SetComputeRootUnorderedAccessView(9, state->d_pair_count->GetGPUVirtualAddress()); // u2
+	sh->cmd_list->SetComputeRootUnorderedAccessView(7, 0); // Null u0
 
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Broad Dispatch");
 	sh->cmd_list->Dispatch(grid_size, 1, 1);
@@ -319,9 +328,6 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state, c
 	// --- Dispatch Prep Phase ---
 	sh->cmd_list->SetPipelineState(state->pso_prep);
 
-	// u2 is already bound to pair_count
-	sh->cmd_list->SetComputeRootUnorderedAccessView(12, state->d_indirect_args->GetGPUVirtualAddress()); // u5
-
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 128, 0), "Phase: Dispatch Prep");
 	sh->cmd_list->Dispatch(1, 1, 1);
 	PIXEndEvent(sh->cmd_list);
@@ -339,18 +345,6 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state, c
 
 	// --- Narrow Phase (Execute Indirect) ---
 	sh->cmd_list->SetPipelineState(state->pso_narrow);
-
-	sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_rigids->GetGPUVirtualAddress()); // t0
-	if (static_count > 0) {
-		sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_statics->GetGPUVirtualAddress()); // t1
-	} else {
-		sh->cmd_list->SetComputeRootShaderResourceView(2, sh->d_rigids->GetGPUVirtualAddress());
-	}
-	sh->cmd_list->SetComputeRootShaderResourceView(3, sh->d_shapes->GetGPUVirtualAddress()); // t2
-	sh->cmd_list->SetComputeRootShaderResourceView(6, state->d_potential_pairs->GetGPUVirtualAddress()); // t5
-
-	sh->cmd_list->SetComputeRootUnorderedAccessView(10, sh->d_collisions->GetGPUVirtualAddress()); // u3
-	sh->cmd_list->SetComputeRootUnorderedAccessView(11, sh->d_col_count->GetGPUVirtualAddress()); // u4
 
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 255), "Phase: Execute Indirect Narrow");
 	sh->cmd_list->ExecuteIndirect(state->cmd_signature, 6, state->d_indirect_args, 0, nullptr, 0);
