@@ -28,12 +28,12 @@ struct dx_state_grid_a {
 	ID3D12Resource* d_pre_keys_out; size_t d_pre_keys_out_size;
 	ID3D12Resource* d_pre_vals_in; size_t d_pre_vals_in_size;
 	ID3D12Resource* d_pre_vals_out; size_t d_pre_vals_out_size;
-	
+
 	ID3D12Resource* d_sorted_aabbs; size_t d_sorted_aabbs_size;
-	
+
 	ID3D12Resource* d_counts; size_t d_counts_size;
 	ID3D12Resource* d_offsets; size_t d_offsets_size;
-	
+
 	ID3D12Resource* d_keys_in; size_t d_keys_in_size;
 	ID3D12Resource* d_keys_out; size_t d_keys_out_size;
 	ID3D12Resource* d_vals_in; size_t d_vals_in_size;
@@ -64,7 +64,7 @@ dx_state_grid_a* dx_grid_a_create(ID3D12Device10* device, bool is_amd) {
 	s->scan_ctx = dx_prefix_sum_create(device);
 
 	D3D12_ROOT_PARAMETER root_params[9] = {};
-	
+
 	// b0 (idx 0)
 	root_params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
 	root_params[0].Constants.ShaderRegister = 0;
@@ -159,7 +159,7 @@ void dx_grid_a_destroy(dx_state_grid_a* s) {
 	if (s->d_cell_ends) s->d_cell_ends->Release();
 	if (s->d_temp) s->d_temp->Release();
 	if (s->rb_scan_ends) s->rb_scan_ends->Release();
-	
+
 	free(s);
 }
 
@@ -168,7 +168,7 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
                          uint32_t static_count, D3D12_GPU_VIRTUAL_ADDRESS aabb_rigids,
                          D3D12_GPU_VIRTUAL_ADDRESS aabb_statics) {
 	uint32_t total_bodies = rigid_count + static_count;
-	uint32_t total_padded = (total_bodies + 3) & ~3; 
+	uint32_t total_padded = (total_bodies + 3) & ~3;
 
 	uint32_t constants[11] = {
 		(uint32_t)config->res_x, (uint32_t)config->res_y, (uint32_t)config->res_z,
@@ -176,21 +176,21 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 		*(uint32_t*)&config->cell_size, rigid_count, static_count, 0, total_bodies
 	};
 
-	ensure_dx_buffer(sh->device, &s->d_pre_keys_in, &s->d_pre_keys_in_size, total_padded, 
-					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT, 
+	ensure_dx_buffer(sh->device, &s->d_pre_keys_in, &s->d_pre_keys_in_size, total_padded,
+					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
 					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-	ensure_dx_buffer(sh->device, &s->d_pre_keys_out, &s->d_pre_keys_out_size, total_padded, 
-					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT, 
+	ensure_dx_buffer(sh->device, &s->d_pre_keys_out, &s->d_pre_keys_out_size, total_padded,
+					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
 					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-	ensure_dx_buffer(sh->device, &s->d_pre_vals_in, &s->d_pre_vals_in_size, total_padded, 
-					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT, 
+	ensure_dx_buffer(sh->device, &s->d_pre_vals_in, &s->d_pre_vals_in_size, total_padded,
+					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
 					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-	ensure_dx_buffer(sh->device, &s->d_pre_vals_out, &s->d_pre_vals_out_size, total_padded, 
-					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT, 
+	ensure_dx_buffer(sh->device, &s->d_pre_vals_out, &s->d_pre_vals_out_size, total_padded,
+					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
 					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 
 	sh->cmd_list->SetComputeRootSignature(s->root_sig);
-	
+
 	// Phase 0a: Load
 	sh->cmd_list->SetPipelineState(s->pso_load);
 	constants[9] = 0; constants[10] = rigid_count;
@@ -208,23 +208,23 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	}
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, 
+				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
 				  D3D12_BARRIER_ACCESS_SHADER_RESOURCE | D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
 
 	// Phase 0b: Sort
 	size_t t_sort = dx_radix_sort_get_temp_storage_size(s->sort_ctx, total_bodies);
-	ensure_dx_buffer(sh->device, &s->d_temp, &s->d_temp_size, t_sort, 1, 
+	ensure_dx_buffer(sh->device, &s->d_temp, &s->d_temp_size, t_sort, 1,
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.5f);
-	dx_radix_sort_dispatch(s->sort_ctx, sh->cmd_list, total_bodies, 
+	dx_radix_sort_dispatch(s->sort_ctx, sh->cmd_list, total_bodies,
 						   s->d_pre_keys_in->GetGPUVirtualAddress(),
-						   s->d_pre_vals_in->GetGPUVirtualAddress(), 
+						   s->d_pre_vals_in->GetGPUVirtualAddress(),
 						   s->d_temp->GetGPUVirtualAddress());
-	
+
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
 				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
 	// Phase 0c: Permute
-	ensure_dx_buffer(sh->device, &s->d_sorted_aabbs, &s->d_sorted_aabbs_size, total_padded, 24, 
+	ensure_dx_buffer(sh->device, &s->d_sorted_aabbs, &s->d_sorted_aabbs_size, total_padded, 24,
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 	sh->cmd_list->SetComputeRootSignature(s->root_sig);
 	sh->cmd_list->SetPipelineState(s->pso_permute);
@@ -237,11 +237,11 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	sh->cmd_list->Dispatch((total_bodies + 255) / 256, 1, 1);
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, 
+				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
 				  D3D12_BARRIER_ACCESS_SHADER_RESOURCE | D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
 
 	// Phase 1a: Count
-	ensure_dx_buffer(sh->device, &s->d_counts, &s->d_counts_size, total_padded, sizeof(uint32_t), 
+	ensure_dx_buffer(sh->device, &s->d_counts, &s->d_counts_size, total_padded, sizeof(uint32_t),
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 	sh->cmd_list->SetPipelineState(s->pso_count);
 	sh->cmd_list->SetComputeRootShaderResourceView(5, s->d_sorted_aabbs->GetGPUVirtualAddress()); // t4
@@ -249,31 +249,31 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	sh->cmd_list->Dispatch((total_bodies + 255) / 256, 1, 1);
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, 
+				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
 				  D3D12_BARRIER_ACCESS_SHADER_RESOURCE | D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
 
 	// Phase 1b: Scan
-	ensure_dx_buffer(sh->device, &s->d_offsets, &s->d_offsets_size, total_padded, sizeof(uint32_t), 
+	ensure_dx_buffer(sh->device, &s->d_offsets, &s->d_offsets_size, total_padded, sizeof(uint32_t),
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 	size_t t_scan = dx_prefix_sum_get_temp_storage_size(s->scan_ctx, total_padded);
-	ensure_dx_buffer(sh->device, &s->d_temp, &s->d_temp_size, t_scan, 1, 
+	ensure_dx_buffer(sh->device, &s->d_temp, &s->d_temp_size, t_scan, 1,
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.5f);
-	dx_prefix_sum_exclusive(s->scan_ctx, sh->cmd_list, total_padded, 
+	dx_prefix_sum_exclusive(s->scan_ctx, sh->cmd_list, total_padded,
 							s->d_counts->GetGPUVirtualAddress(),
-							s->d_offsets->GetGPUVirtualAddress(), 
+							s->d_offsets->GetGPUVirtualAddress(),
 							s->d_temp->GetGPUVirtualAddress());
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COPY,
 				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, D3D12_BARRIER_ACCESS_COPY_SOURCE);
 
 	// CPU Sync logic mimicking CUDA's readback of total sum
-	ensure_dx_buffer(sh->device, &s->rb_scan_ends, &s->rb_scan_ends_size, 2, sizeof(uint32_t), 
+	ensure_dx_buffer(sh->device, &s->rb_scan_ends, &s->rb_scan_ends_size, 2, sizeof(uint32_t),
 					 D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, 1.0f);
-	sh->cmd_list->CopyBufferRegion(s->rb_scan_ends, 0, s->d_offsets, 
+	sh->cmd_list->CopyBufferRegion(s->rb_scan_ends, 0, s->d_offsets,
 								   (total_bodies - 1) * sizeof(uint32_t), sizeof(uint32_t));
-	sh->cmd_list->CopyBufferRegion(s->rb_scan_ends, sizeof(uint32_t), s->d_counts, 
+	sh->cmd_list->CopyBufferRegion(s->rb_scan_ends, sizeof(uint32_t), s->d_counts,
 								   (total_bodies - 1) * sizeof(uint32_t), sizeof(uint32_t));
-	
+
 	execute_and_wait(sh);
 
 	uint32_t ends[2];
@@ -281,27 +281,27 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	s->rb_scan_ends->Map(0, nullptr, &mapped);
 	memcpy(ends, mapped, 2 * sizeof(uint32_t));
 	s->rb_scan_ends->Unmap(0, nullptr);
-	
+
 	uint32_t total_keys = ends[0] + ends[1];
 	if (total_keys == 0) return 0; // Prevent dispatching empty grids
 	uint32_t total_keys_padded = (total_keys + 3) & ~3;
 
 	// Back to execution
 	sh->cmd_list->SetComputeRootSignature(s->root_sig);
-	
+
 	// Phase 1c: Assign
-	ensure_dx_buffer(sh->device, &s->d_keys_in, &s->d_keys_in_size, total_keys_padded, 
-					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT, 
-					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-	ensure_dx_buffer(sh->device, &s->d_keys_out, &s->d_keys_out_size, total_keys_padded, 
-					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT, 
-					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-	ensure_dx_buffer(sh->device, &s->d_vals_in, &s->d_vals_in_size, total_keys_padded, 
-					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT, 
-					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-	ensure_dx_buffer(sh->device, &s->d_vals_out, &s->d_vals_out_size, total_keys_padded, 
-					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT, 
-					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
+	ensure_dx_buffer(sh->device, &s->d_keys_in, &s->d_keys_in_size, total_keys_padded,
+					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
+					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.5f);
+	ensure_dx_buffer(sh->device, &s->d_keys_out, &s->d_keys_out_size, total_keys_padded,
+					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
+					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.5f);
+	ensure_dx_buffer(sh->device, &s->d_vals_in, &s->d_vals_in_size, total_keys_padded,
+					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
+					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.5f);
+	ensure_dx_buffer(sh->device, &s->d_vals_out, &s->d_vals_out_size, total_keys_padded,
+					 sizeof(uint32_t), D3D12_HEAP_TYPE_DEFAULT,
+					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.5f);
 
 	sh->cmd_list->SetPipelineState(s->pso_assign);
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 11, constants, 0);
@@ -312,31 +312,31 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	sh->cmd_list->Dispatch((total_bodies + 255) / 256, 1, 1);
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, 
+				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
 				  D3D12_BARRIER_ACCESS_SHADER_RESOURCE | D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
 
 	// Phase 2: Sort Pairs
 	t_sort = dx_radix_sort_get_temp_storage_size(s->sort_ctx, total_keys);
-	ensure_dx_buffer(sh->device, &s->d_temp, &s->d_temp_size, t_sort, 1, 
+	ensure_dx_buffer(sh->device, &s->d_temp, &s->d_temp_size, t_sort, 1,
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.5f);
-	dx_radix_sort_dispatch(s->sort_ctx, sh->cmd_list, total_keys, 
+	dx_radix_sort_dispatch(s->sort_ctx, sh->cmd_list, total_keys,
 						   s->d_keys_in->GetGPUVirtualAddress(),
-						   s->d_vals_in->GetGPUVirtualAddress(), 
+						   s->d_vals_in->GetGPUVirtualAddress(),
 						   s->d_temp->GetGPUVirtualAddress());
-	
+
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, 
+				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
 				  D3D12_BARRIER_ACCESS_SHADER_RESOURCE | D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
 
 	// Phase 3: Boundaries
 	uint32_t num_cells = config->res_x * config->res_y * config->res_z;
 	uint32_t cells_padded = (num_cells + 3) & ~3;
-	ensure_dx_buffer(sh->device, &s->d_cell_ends, &s->d_cell_ends_size, cells_padded, sizeof(uint32_t), 
+	ensure_dx_buffer(sh->device, &s->d_cell_ends, &s->d_cell_ends_size, cells_padded, sizeof(uint32_t),
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-	
+
 	sh->cmd_list->SetComputeRootSignature(s->root_sig);
-	
-	// 3a. Clear cell ends 
+
+	// 3a. Clear cell ends
 	sh->cmd_list->SetPipelineState(s->pso_clear);
 	constants[10] = cells_padded;
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 11, constants, 0);
@@ -346,25 +346,25 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
 				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
 
-	// 3b. Boundaries 
+	// 3b. Boundaries
 	sh->cmd_list->SetPipelineState(s->pso_bounds);
-	constants[10] = total_keys; 
+	constants[10] = total_keys;
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 11, constants, 0);
 	sh->cmd_list->SetComputeRootShaderResourceView(3, s->d_keys_in->GetGPUVirtualAddress()); // t2
 	sh->cmd_list->SetComputeRootUnorderedAccessView(6, s->d_cell_ends->GetGPUVirtualAddress()); // u0
 	sh->cmd_list->Dispatch((total_keys + 255) / 256, 1, 1);
 
 	issue_barrier(sh->cmd_list, D3D12_BARRIER_SYNC_COMPUTE_SHADING, D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, 
+				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
 				  D3D12_BARRIER_ACCESS_SHADER_RESOURCE | D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
 
 	// 3c. Inclusive Scan
 	t_scan = dx_prefix_sum_get_temp_storage_size(s->scan_ctx, cells_padded);
-	ensure_dx_buffer(sh->device, &s->d_temp, &s->d_temp_size, t_scan, 1, 
+	ensure_dx_buffer(sh->device, &s->d_temp, &s->d_temp_size, t_scan, 1,
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.5f);
-	dx_prefix_sum_inclusive_max(s->scan_ctx, sh->cmd_list, cells_padded, 
+	dx_prefix_sum_inclusive_max(s->scan_ctx, sh->cmd_list, cells_padded,
 								s->d_cell_ends->GetGPUVirtualAddress(),
-								s->d_cell_ends->GetGPUVirtualAddress(), 
+								s->d_cell_ends->GetGPUVirtualAddress(),
 								s->d_temp->GetGPUVirtualAddress());
 
 	return total_keys;
