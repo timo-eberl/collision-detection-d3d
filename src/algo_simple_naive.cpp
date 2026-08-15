@@ -266,37 +266,67 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 
 	dx_profile_step(&prof, sh, "build");
 
-	if (total_keys > 0) {
-		// --- Broad Phase (Grid Traversal) ---
-		sh->cmd_list->SetComputeRootSignature(state->root_sig);
-		sh->cmd_list->SetPipelineState(state->pso_broad);
+	// --- Broad Phase (Grid Traversal) ---
+	// Restore our root signature since dx_grid_a_build overwrote it on the command list.
+	// This invalidates all previous bindings, requiring a full rebind of all parameters.
+	sh->cmd_list->SetComputeRootSignature(state->root_sig);
+	sh->cmd_list->SetPipelineState(state->pso_broad);
 
+	if (total_keys > 0) {
 		uint32_t constants_bp[5] = { rigid_count, rigid_count, static_count, kernel_max, 0 };
 		sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants_bp, 0);
 
 		uint32_t dispatch_stride = 2048 * block_size;
 		uint32_t grid_constants[11] = {
 			(uint32_t)config->res_x, (uint32_t)config->res_y, (uint32_t)config->res_z,
-			*(uint32_t*)&config->origin_x, *(uint32_t*)&config->origin_y, *(uint32_t*)&config->origin_z,
-			*(uint32_t*)&config->cell_size, rigid_count, static_count, total_keys, dispatch_stride
+			*(uint32_t*)&config->origin_x, *(uint32_t*)&config->origin_y, 
+			*(uint32_t*)&config->origin_z, *(uint32_t*)&config->cell_size, 
+			rigid_count, static_count, total_keys, dispatch_stride
 		};
 		sh->cmd_list->SetComputeRoot32BitConstants(1, 11, grid_constants, 0);
 
-		// Bind expanded builder outputs
-		sh->cmd_list->SetComputeRootShaderResourceView(8, dx_grid_a_get_sorted_keys(state->grid_builder)); // t6
-		sh->cmd_list->SetComputeRootShaderResourceView(9, dx_grid_a_get_sorted_aabbs(state->grid_builder)); // t7
-		sh->cmd_list->SetComputeRootShaderResourceView(10, dx_grid_a_get_sorted_indices(state->grid_builder)); // t8
-		sh->cmd_list->SetComputeRootShaderResourceView(11, dx_grid_a_get_sorted_vals(state->grid_builder)); // t9
-		sh->cmd_list->SetComputeRootShaderResourceView(12, dx_grid_a_get_cell_ends(state->grid_builder)); // t10
+		D3D12_GPU_VIRTUAL_ADDRESS rigids_addr = sh->d_rigids->GetGPUVirtualAddress();
+		D3D12_GPU_VIRTUAL_ADDRESS statics_addr = static_count > 0 ? 
+			sh->d_statics->GetGPUVirtualAddress() : rigids_addr;
+		D3D12_GPU_VIRTUAL_ADDRESS aabb_r_addr = state->d_aabb_rigids->GetGPUVirtualAddress();
+		D3D12_GPU_VIRTUAL_ADDRESS aabb_s_addr = static_count > 0 ? 
+			state->d_aabb_statics->GetGPUVirtualAddress() : aabb_r_addr;
 
-		sh->cmd_list->SetComputeRootUnorderedAccessView(14, state->d_potential_pairs->GetGPUVirtualAddress()); // u1
-		sh->cmd_list->SetComputeRootUnorderedAccessView(15, state->d_pair_count->GetGPUVirtualAddress()); // u2
+		sh->cmd_list->SetComputeRootShaderResourceView(2, rigids_addr); // t0
+		sh->cmd_list->SetComputeRootShaderResourceView(3, statics_addr); // t1
+		sh->cmd_list->SetComputeRootShaderResourceView(
+			4, sh->d_shapes->GetGPUVirtualAddress()); // t2
+		sh->cmd_list->SetComputeRootShaderResourceView(5, aabb_r_addr); // t3
+		sh->cmd_list->SetComputeRootShaderResourceView(6, aabb_s_addr); // t4
+		sh->cmd_list->SetComputeRootShaderResourceView(
+			7, state->d_potential_pairs->GetGPUVirtualAddress()); // t5
+
+		sh->cmd_list->SetComputeRootShaderResourceView(
+			8, dx_grid_a_get_sorted_keys(state->grid_builder)); // t6
+		sh->cmd_list->SetComputeRootShaderResourceView(
+			9, dx_grid_a_get_sorted_aabbs(state->grid_builder)); // t7
+		sh->cmd_list->SetComputeRootShaderResourceView(
+			10, dx_grid_a_get_sorted_indices(state->grid_builder)); // t8
+		sh->cmd_list->SetComputeRootShaderResourceView(
+			11, dx_grid_a_get_sorted_vals(state->grid_builder)); // t9
+		sh->cmd_list->SetComputeRootShaderResourceView(
+			12, dx_grid_a_get_cell_ends(state->grid_builder)); // t10
+
+		sh->cmd_list->SetComputeRootUnorderedAccessView(13, aabb_r_addr); // u0
+		sh->cmd_list->SetComputeRootUnorderedAccessView(
+			14, state->d_potential_pairs->GetGPUVirtualAddress()); // u1
+		sh->cmd_list->SetComputeRootUnorderedAccessView(
+			15, state->d_pair_count->GetGPUVirtualAddress()); // u2
+		sh->cmd_list->SetComputeRootUnorderedAccessView(
+			16, sh->d_collisions->GetGPUVirtualAddress()); // u3
+		sh->cmd_list->SetComputeRootUnorderedAccessView(
+			17, sh->d_col_count->GetGPUVirtualAddress()); // u4
 
 		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Broad Dispatch");
 		sh->cmd_list->Dispatch(2048, 1, 1);
 		PIXEndEvent(sh->cmd_list);
 	}
-	
+
 	dx_profile_step(&prof, sh, "query");
 
 	// Safely barrier and readback even if total_keys == 0 (pair_count will be exactly 0)
