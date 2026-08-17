@@ -345,6 +345,10 @@ endif()
 add_executable(${PROJECT_NAME}_app src/main.cpp)
 target_link_libraries(${PROJECT_NAME}_app PRIVATE ${PROJECT_NAME})
 
+# For development. Allows us to load the collision_test_data.bin from the project root, regardless
+# of the working directory
+target_compile_definitions(${PROJECT_NAME}_app PRIVATE PROJECT_ROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\")
+
 if(MSVC)
 	# Ensure the PIX dll is copied next to the executable
 	add_custom_command(TARGET ${PROJECT_NAME}_app POST_BUILD

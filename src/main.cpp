@@ -4,6 +4,10 @@
 #include <math.h>
 #include <stdint.h>
 
+#ifndef PROJECT_ROOT_DIR
+#define PROJECT_ROOT_DIR "."
+#endif
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -251,9 +255,9 @@ int main() {
 	SetConsoleOutputCP(CP_UTF8);
 #endif
 
-	FILE* file = fopen("collision_test_data.bin", "rb");
+	FILE* file = fopen(PROJECT_ROOT_DIR "/collision_test_data.bin", "rb");
 	if (!file) {
-		printf("❌ Failed to open collision_test_data.bin\n");
+		printf("❌ Failed to open " PROJECT_ROOT_DIR "/collision_test_data.bin\n");
 		return 1;
 	}
 
