@@ -331,13 +331,15 @@ int main() {
 			true, &work_graphs_col_count);
 
 		// GPU vs GPU comparison (sort, then memcmp)
+		// We don't memcmp Work Graph results as they yield slightly different output.
+		// Presumably this is caused by the different compiler target profiles (lib_6_8 for
+		// Work Graphs vs cs_6_8 for the compute shaders).
 		bool pipeline_match = true;
 		if (naive_col_count != binned_col_count || binned_col_count != indirect_col_count ||
 			binned_col_count != work_graphs_col_count) {
 			printf("❌ Frame %u FAILED: Pipeline mismatch! "
-				   "Naive (%u) vs Binned (%u) vs Indirect (%u) vs Work Graphs (%u)\n",
-				   frame_index, naive_col_count, binned_col_count, indirect_col_count,
-				   work_graphs_col_count);
+				   "Naive (%u) vs Binned (%u) vs Indirect (%u)\n",
+				   frame_index, naive_col_count, binned_col_count, indirect_col_count);
 			pipeline_match = false;
 		}
 		else if (binned_col_count > 0) {
@@ -354,9 +356,6 @@ int main() {
 					   binned_col_count * sizeof(dx_collision_compact)) != 0 ||
 				memcmp(binned_compact, indirect_compact,
 					   indirect_col_count * sizeof(dx_collision_compact)) != 0) {
-				// We don't memcmp Work Graph results as they yield slightly different output.
-				// Presumably this is caused by the different compiler target profiles (lib_6_8 for
-				// Work Graphs vs cs_6_8 for the compute shaders).
 				printf("❌ Frame %u FAILED: Pipeline mismatch! GPU algorithms returned "
 					   "different data.\n", frame_index);
 				pipeline_match = false;
