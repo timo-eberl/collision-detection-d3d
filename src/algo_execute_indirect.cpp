@@ -5,6 +5,7 @@
 #include "collision_detection_d3d.h"
 #include "dx_profile.h"
 #include "shared.h"
+#include "broad_phase_grid_a.h"
 
 #ifdef _MSC_VER
 	#include <pix3.h>
@@ -34,6 +35,8 @@ struct dx_indirect_command {
 typedef struct { float min_x, max_x, min_y, max_y, min_z, max_z; } packed_aabb;
 
 struct dx_state_execute_indirect {
+	dx_state_grid_a* grid_builder;
+
 	ID3D12RootSignature* root_sig;
 	ID3D12PipelineState* pso_aabb_prep;
 	ID3D12PipelineState* pso_broad;
@@ -64,26 +67,33 @@ static void bind_universal_context(ID3D12GraphicsCommandList7* cmd, dx_shared_st
 	D3D12_GPU_VIRTUAL_ADDRESS aabb_r = state->d_aabb_rigids->GetGPUVirtualAddress();
 	D3D12_GPU_VIRTUAL_ADDRESS aabb_s = static_count > 0 ? state->d_aabb_statics->GetGPUVirtualAddress() : aabb_r;
 
-	cmd->SetComputeRootShaderResourceView(1, rigids);
-	cmd->SetComputeRootShaderResourceView(2, statics);
-	cmd->SetComputeRootShaderResourceView(3, sh->d_shapes->GetGPUVirtualAddress());
-	cmd->SetComputeRootShaderResourceView(4, aabb_r);
-	cmd->SetComputeRootShaderResourceView(5, aabb_s);
-	cmd->SetComputeRootShaderResourceView(6, state->d_potential_pairs->GetGPUVirtualAddress());
+	cmd->SetComputeRootShaderResourceView(2, rigids);
+	cmd->SetComputeRootShaderResourceView(3, statics);
+	cmd->SetComputeRootShaderResourceView(4, sh->d_shapes->GetGPUVirtualAddress());
+	cmd->SetComputeRootShaderResourceView(5, aabb_r);
+	cmd->SetComputeRootShaderResourceView(6, aabb_s);
+	cmd->SetComputeRootShaderResourceView(7, state->d_potential_pairs->GetGPUVirtualAddress());
 
-	cmd->SetComputeRootUnorderedAccessView(7, 0); // u0 set per-dispatch
-	cmd->SetComputeRootUnorderedAccessView(8, state->d_potential_pairs->GetGPUVirtualAddress());
-	cmd->SetComputeRootUnorderedAccessView(9, state->d_pair_count->GetGPUVirtualAddress());
-	cmd->SetComputeRootUnorderedAccessView(10, sh->d_collisions->GetGPUVirtualAddress());
-	cmd->SetComputeRootUnorderedAccessView(11, sh->d_col_count->GetGPUVirtualAddress());
-	cmd->SetComputeRootUnorderedAccessView(12, state->d_indirect_args->GetGPUVirtualAddress());
+	cmd->SetComputeRootShaderResourceView(8, dx_grid_a_get_sorted_keys(state->grid_builder)); 
+	cmd->SetComputeRootShaderResourceView(9, dx_grid_a_get_sorted_aabbs(state->grid_builder));
+	cmd->SetComputeRootShaderResourceView(10, dx_grid_a_get_sorted_indices(state->grid_builder));
+	cmd->SetComputeRootShaderResourceView(11, dx_grid_a_get_sorted_vals(state->grid_builder));
+	cmd->SetComputeRootShaderResourceView(12, dx_grid_a_get_cell_ends(state->grid_builder));
+
+	cmd->SetComputeRootUnorderedAccessView(13, 0); // u0 set per-dispatch
+	cmd->SetComputeRootUnorderedAccessView(14, state->d_potential_pairs->GetGPUVirtualAddress());
+	cmd->SetComputeRootUnorderedAccessView(15, state->d_pair_count->GetGPUVirtualAddress());
+	cmd->SetComputeRootUnorderedAccessView(16, sh->d_collisions->GetGPUVirtualAddress());
+	cmd->SetComputeRootUnorderedAccessView(17, sh->d_col_count->GetGPUVirtualAddress());
+	cmd->SetComputeRootUnorderedAccessView(18, state->d_indirect_args->GetGPUVirtualAddress());
 }
 
 extern "C" dx_state_execute_indirect* dx_state_execute_indirect_create(dx_shared_state* sh) {
 	dx_state_execute_indirect* s = (dx_state_execute_indirect*)calloc(1, sizeof(dx_state_execute_indirect));
 
-	// 1 Constant, 6 SRVs, 6 UAVs
-	D3D12_ROOT_PARAMETER root_params[13] = {};
+	s->grid_builder = dx_grid_a_create(sh->device, sh->is_amd);
+
+	D3D12_ROOT_PARAMETER root_params[19] = {};
 
 	// b0: Constants
 	root_params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
@@ -92,24 +102,31 @@ extern "C" dx_state_execute_indirect* dx_state_execute_indirect_create(dx_shared
 	root_params[0].Constants.Num32BitValues = 6;
 	root_params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-	// SRVs: t0 to t5
-	for (int i = 0; i < 6; ++i) {
-		root_params[1 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-		root_params[1 + i].Descriptor.ShaderRegister = i;
-		root_params[1 + i].Descriptor.RegisterSpace = 0;
-		root_params[1 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+	// b1: GridConstants
+	root_params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+	root_params[1].Constants.ShaderRegister = 1;
+	root_params[1].Constants.RegisterSpace = 0;
+	root_params[1].Constants.Num32BitValues = 11;
+	root_params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	// SRVs: t0 to t10
+	for (int i = 0; i < 11; ++i) {
+		root_params[2 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+		root_params[2 + i].Descriptor.ShaderRegister = i;
+		root_params[2 + i].Descriptor.RegisterSpace = 0;
+		root_params[2 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 	}
 
 	// UAVs: u0 to u5
 	for (int i = 0; i < 6; ++i) {
-		root_params[7 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
-		root_params[7 + i].Descriptor.ShaderRegister = i;
-		root_params[7 + i].Descriptor.RegisterSpace = 0;
-		root_params[7 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		root_params[13 + i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+		root_params[13 + i].Descriptor.ShaderRegister = i;
+		root_params[13 + i].Descriptor.RegisterSpace = 0;
+		root_params[13 + i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 	}
 
 	D3D12_ROOT_SIGNATURE_DESC rs_desc = {};
-	rs_desc.NumParameters = 13;
+	rs_desc.NumParameters = 19;
 	rs_desc.pParameters = root_params;
 
 	ID3DBlob* signature = nullptr;
@@ -172,6 +189,7 @@ extern "C" dx_state_execute_indirect* dx_state_execute_indirect_create(dx_shared
 
 extern "C" void dx_state_execute_indirect_destroy(dx_state_execute_indirect* s) {
 	if (!s) return;
+	dx_grid_a_destroy(s->grid_builder);
 	if (s->pso_aabb_prep) s->pso_aabb_prep->Release();
 	if (s->pso_broad) s->pso_broad->Release();
 	if (s->pso_prep) s->pso_prep->Release();
@@ -188,7 +206,8 @@ extern "C" void dx_state_execute_indirect_destroy(dx_state_execute_indirect* s) 
 }
 
 extern "C" dx_collision_compact*
-dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state, const dx_entity* rigids,
+dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
+						const dx_grid_config* config, const dx_entity* rigids,
 					    uint32_t rigid_count, const dx_entity* statics, uint32_t static_count,
 					    const dx_shape* shapes, uint32_t shape_count, bool statics_changed,
 					    uint32_t* out_count) {
@@ -273,15 +292,15 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state, c
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 6, constants, 0);
 
 	// Prep Rigids
-	sh->cmd_list->SetComputeRootUnorderedAccessView(7, state->d_aabb_rigids->GetGPUVirtualAddress()); // u0
+	sh->cmd_list->SetComputeRootUnorderedAccessView(13, state->d_aabb_rigids->GetGPUVirtualAddress()); // u0
 	sh->cmd_list->Dispatch(grid_size, 1, 1);
 
 	// Prep Statics
 	if (statics_changed && static_count > 0) {
 		constants[0] = static_count;
 		sh->cmd_list->SetComputeRoot32BitConstants(0, 6, constants, 0);
-		sh->cmd_list->SetComputeRootShaderResourceView(1, sh->d_statics->GetGPUVirtualAddress()); // t0
-		sh->cmd_list->SetComputeRootUnorderedAccessView(7, state->d_aabb_statics->GetGPUVirtualAddress()); // u0
+		sh->cmd_list->SetComputeRootShaderResourceView(3, sh->d_statics->GetGPUVirtualAddress()); // t1
+		sh->cmd_list->SetComputeRootUnorderedAccessView(13, state->d_aabb_statics->GetGPUVirtualAddress()); // u0
 		uint32_t static_grid = (static_count + block_size - 1) / block_size;
 		sh->cmd_list->Dispatch(static_grid, 1, 1);
 	}
@@ -299,18 +318,46 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state, c
 	D3D12_BARRIER_GROUP bg_prep = {D3D12_BARRIER_TYPE_GLOBAL, 1, &gb_prep};
 	sh->cmd_list->Barrier(1, &bg_prep);
 
-	// --- Broad Phase ---
-	sh->cmd_list->SetPipelineState(state->pso_broad);
+	// --- Build Grid ---
+	uint32_t total_keys = dx_grid_a_build(sh, state->grid_builder, config, rigid_count, static_count, 
+										  state->d_aabb_rigids->GetGPUVirtualAddress(),
+										  static_count > 0 ? state->d_aabb_statics->GetGPUVirtualAddress() : 0);
 
-	constants[0] = 0;
-	constants[3] = kernel_max;
-	sh->cmd_list->SetComputeRoot32BitConstants(0, 6, constants, 0);
+	D3D12_GLOBAL_BARRIER gb_build = {};
+	gb_build.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+	gb_build.SyncAfter = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+	gb_build.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+	gb_build.AccessAfter = D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+	D3D12_BARRIER_GROUP bg_build = {D3D12_BARRIER_TYPE_GLOBAL, 1, &gb_build};
+	sh->cmd_list->Barrier(1, &bg_build);
 
-	sh->cmd_list->SetComputeRootUnorderedAccessView(7, 0); // Null u0
+	dx_profile_step(&prof, sh, "build");
 
-	PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Broad Dispatch");
-	sh->cmd_list->Dispatch(grid_size, 1, 1);
-	PIXEndEvent(sh->cmd_list);
+	if (total_keys > 0) {
+		// --- Broad Phase (Grid Traversal) ---
+		sh->cmd_list->SetComputeRootSignature(state->root_sig);
+		sh->cmd_list->SetPipelineState(state->pso_broad);
+		
+		bind_universal_context(sh->cmd_list, sh, state, static_count);
+
+		uint32_t constants_bp[6] = { rigid_count, rigid_count, static_count, kernel_max, 0, 0 };
+		sh->cmd_list->SetComputeRoot32BitConstants(0, 6, constants_bp, 0);
+
+		uint32_t dispatch_stride = 2048 * block_size;
+		uint32_t grid_constants[11] = {
+			(uint32_t)config->res_x, (uint32_t)config->res_y, (uint32_t)config->res_z,
+			*(uint32_t*)&config->origin_x, *(uint32_t*)&config->origin_y, *(uint32_t*)&config->origin_z,
+			*(uint32_t*)&config->cell_size, rigid_count, static_count, total_keys, dispatch_stride
+		};
+		sh->cmd_list->SetComputeRoot32BitConstants(1, 11, grid_constants, 0);
+
+		sh->cmd_list->SetComputeRootUnorderedAccessView(13, 0); // Null u0
+
+		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Broad Dispatch");
+		sh->cmd_list->Dispatch(2048, 1, 1);
+		PIXEndEvent(sh->cmd_list);
+	}
+	
 	dx_profile_step(&prof, sh, "broad");
 
 	// Barrier to sync InterlockedAdds before reading them in the prep shader, and to transition
@@ -345,6 +392,9 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state, c
 
 	// --- Narrow Phase (Execute Indirect) ---
 	sh->cmd_list->SetPipelineState(state->pso_narrow);
+
+	// Rebind universe to ensure execution has correct SRVs since they might have decayed
+	bind_universal_context(sh->cmd_list, sh, state, static_count);
 
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 255), "Phase: Execute Indirect Narrow");
 	sh->cmd_list->ExecuteIndirect(state->cmd_signature, 6, state->d_indirect_args, 0, nullptr, 0);

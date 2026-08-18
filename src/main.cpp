@@ -129,13 +129,13 @@ bool verify_results(const char* algorithm_name,
 
 		printf("  Body A (%s):\n", a.shape_type < 4 ? type_names[a.shape_type] : "Unknown");
 		printf("    Pos:  (%f, %f, %f)\n", a.position[0], a.position[1], a.position[2]);
-		printf("    Rot:  (%f, %f, %f, %f)\n", 
+		printf("    Rot:  (%f, %f, %f, %f)\n",
 			   a.rotation[0], a.rotation[1], a.rotation[2], a.rotation[3]);
 		printf("    Data: (%f, %f, %f, %f)\n", s_a.data[0], s_a.data[1], s_a.data[2], s_a.data[3]);
 
 		printf("  Body B (%s):\n", b.shape_type < 4 ? type_names[b.shape_type] : "Unknown");
 		printf("    Pos:  (%f, %f, %f)\n", b.position[0], b.position[1], b.position[2]);
-		printf("    Rot:  (%f, %f, %f, %f)\n", 
+		printf("    Rot:  (%f, %f, %f, %f)\n",
 			   b.rotation[0], b.rotation[1], b.rotation[2], b.rotation[3]);
 		printf("    Data: (%f, %f, %f, %f)\n", s_b.data[0], s_b.data[1], s_b.data[2], s_b.data[3]);
 	};
@@ -220,7 +220,7 @@ bool verify_results(const char* algorithm_name,
 			} else {
 				printf("❌ Frame %u FAILED (%s): Missing expected pair (%u, %u type %u) "
 					   "with depth=%f\n",
-					   frame_index, algorithm_name, exp->a_index, exp->b_index, 
+					   frame_index, algorithm_name, exp->a_index, exp->b_index,
 					   exp->b_type, exp->depth);
 
 				print_body_details(exp->a_index, exp->b_index, exp->b_type);
@@ -234,7 +234,7 @@ bool verify_results(const char* algorithm_name,
 				j++;
 			} else {
 				printf("❌ Frame %u FAILED (%s): Extra GPU pair (%u, %u type %u) with depth=%f\n",
-					   frame_index, algorithm_name, act->a_index, act->b_index, 
+					   frame_index, algorithm_name, act->a_index, act->b_index,
 					   act->b_type, act->depth);
 
 				print_body_details(act->a_index, act->b_index, act->b_type);
@@ -321,9 +321,9 @@ int main() {
 								 static_count, shapes, shape_count, true, &binned_col_count);
 
 		uint32_t indirect_col_count = 0;
-		dx_collision_compact* indirect_compact = dx_run_execute_indirect(
-			sh, state_indirect, rigids, rigid_count, statics, static_count, shapes, shape_count,
-			true, &indirect_col_count);
+		dx_collision_compact* indirect_compact =
+			dx_run_execute_indirect(sh, state_indirect, &grid_config, rigids, rigid_count, statics,
+									static_count, shapes, shape_count, true, &indirect_col_count);
 
 		uint32_t work_graphs_col_count = 0;
 		dx_collision_compact* work_graphs_compact = dx_run_work_graphs(
