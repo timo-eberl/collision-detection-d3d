@@ -81,9 +81,6 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 	aabb_uav[i] = box;
 }
 
-// -------------------------------------------------------------
-// GRID TRAVERSAL OVERLAP EMITTER
-// -------------------------------------------------------------
 void emit_overlap(uint a_idx, uint b_idx, uint b_type) {
 	uint idx;
 	InterlockedAdd(pair_count_uav[0], 1, idx);
@@ -97,7 +94,6 @@ void emit_overlap(uint a_idx, uint b_idx, uint b_type) {
 	}
 }
 #include "grid_a_traversal.hlsli"
-// -------------------------------------------------------------
 
 [numthreads(256, 1, 1)]
 void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {

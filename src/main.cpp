@@ -316,9 +316,9 @@ int main() {
 								static_count, shapes, shape_count, true, &naive_col_count);
 
 		uint32_t binned_col_count = 0;
-		dx_collision_compact* binned_compact = dx_run_simple_binned(
-			sh, state_binned, rigids, rigid_count, statics, static_count, shapes, shape_count, true,
-			&binned_col_count);
+		dx_collision_compact* binned_compact =
+			dx_run_simple_binned(sh, state_binned, &grid_config, rigids, rigid_count, statics,
+								 static_count, shapes, shape_count, true, &binned_col_count);
 
 		uint32_t indirect_col_count = 0;
 		dx_collision_compact* indirect_compact = dx_run_execute_indirect(

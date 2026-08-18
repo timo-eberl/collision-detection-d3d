@@ -9,12 +9,27 @@ cbuffer Constants : register(b0) {
 	uint bin_index;
 };
 
+cbuffer GridConstants : register(b1) {
+	int res_x; int res_y; int res_z;
+	float origin_x; float origin_y; float origin_z;
+	float cell_size;
+	uint grid_rigid_count; uint grid_static_count;
+	uint total_keys; uint dispatch_stride;
+};
+
 StructuredBuffer<dx_entity> entities_srv : register(t0);
 StructuredBuffer<dx_entity> statics_srv : register(t1);
 StructuredBuffer<dx_shape> shapes_srv : register(t2);
 StructuredBuffer<packed_aabb> aabb_rigids_srv : register(t3);
 StructuredBuffer<packed_aabb> aabb_statics_srv : register(t4);
 StructuredBuffer<dx_potential_pair> potential_pairs_srv : register(t5);
+
+// Expanded SRVs for Flat Traversal
+StructuredBuffer<uint> sorted_keys_srv : register(t6);
+StructuredBuffer<packed_aabb> sorted_aabbs_srv : register(t7);
+StructuredBuffer<uint> sorted_indices_srv : register(t8);
+StructuredBuffer<uint> sorted_vals_srv : register(t9);
+StructuredBuffer<uint> cell_ends_srv : register(t10);
 
 RWStructuredBuffer<packed_aabb> aabb_uav : register(u0);
 RWStructuredBuffer<dx_potential_pair> potential_pairs_uav : register(u1);
@@ -66,58 +81,28 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 	aabb_uav[i] = box;
 }
 
-[numthreads(256, 1, 1)]
-void cs_broad_phase(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= rigid_count) return;
+void emit_overlap(uint a_idx, uint b_idx, uint b_type) {
+	// Re-evaluate shape types directly. While this causes extra buffer fetches, it correctly
+	// computes the target bin on the fly avoiding a separate pass.
+	uint type_a = entities_srv[a_idx].shape_type;
+	uint type_b = (b_type == 1) ? entities_srv[b_idx].shape_type : statics_srv[b_idx].shape_type;
+	
+	uint min_t = min(type_a, type_b);
+	uint max_t = max(type_a, type_b);
+	uint bin_idx = (max_t * (max_t + 1)) / 2 + min_t;
 
-	packed_aabb box_i = aabb_rigids_srv[i];
-	uint type_a = entities_srv[i].shape_type;
-
-	for (uint j = i + 1; j < rigid_count; ++j) {
-		if (aabb_overlap(box_i, aabb_rigids_srv[j])) {
-			uint type_b = entities_srv[j].shape_type;
-			uint min_t = min(type_a, type_b);
-			uint max_t = max(type_a, type_b);
-			// Maps an unordered pair of shape types (min_t, max_t) into a contiguous
-			// 1D index [0, 5] using triangular numbers.
-			// By binning overlaps immediately, we avoid a separate sorting pass and reduce atomic
-			// contention by spreading the writes across 6 distinct counters.
-			uint bin_idx = (max_t * (max_t + 1)) / 2 + min_t;
-
-			uint idx;
-			InterlockedAdd(pair_count_uav[bin_idx], 1, idx);
-			if (idx < max_collisions) {
-				dx_potential_pair p;
-				p.a_index = i;
-				p.b_index = j;
-				p.b_type = 1;
-				p.pad = 0;
-				potential_pairs_uav[bin_idx * max_collisions + idx] = p;
-			}
-		}
-	}
-
-	for (uint k = 0; k < static_count; ++k) {
-		if (aabb_overlap(box_i, aabb_statics_srv[k])) {
-			uint type_b = statics_srv[k].shape_type;
-			uint min_t = min(type_a, type_b);
-			uint max_t = max(type_a, type_b);
-			uint bin_idx = (max_t * (max_t + 1)) / 2 + min_t;
-
-			uint idx;
-			InterlockedAdd(pair_count_uav[bin_idx], 1, idx);
-			if (idx < max_collisions) {
-				dx_potential_pair p;
-				p.a_index = i;
-				p.b_index = k;
-				p.b_type = 0;
-				p.pad = 0;
-				potential_pairs_uav[bin_idx * max_collisions + idx] = p;
-			}
-		}
+	uint idx;
+	InterlockedAdd(pair_count_uav[bin_idx], 1, idx);
+	if (idx < max_collisions) {
+		dx_potential_pair p;
+		p.a_index = a_idx;
+		p.b_index = b_idx;
+		p.b_type = b_type;
+		p.pad = 0;
+		potential_pairs_uav[bin_idx * max_collisions + idx] = p;
 	}
 }
+#include "grid_a_traversal.hlsli"
 
 [numthreads(256, 1, 1)]
 void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
