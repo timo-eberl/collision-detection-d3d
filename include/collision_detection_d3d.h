@@ -86,6 +86,7 @@ void dx_state_work_graphs_destroy(dx_state_work_graphs* state);
 
 dx_collision_compact* dx_run_work_graphs(dx_shared_state* shared_state,
 										 dx_state_work_graphs* state,
+										 const dx_grid_config* config,
 										 const dx_entity* rigid_entities, uint32_t rigid_count,
 										 const dx_entity* static_entities, uint32_t static_count,
 										 const dx_shape* shapes, uint32_t shape_count,

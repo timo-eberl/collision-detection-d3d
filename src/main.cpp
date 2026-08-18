@@ -326,9 +326,9 @@ int main() {
 									static_count, shapes, shape_count, true, &indirect_col_count);
 
 		uint32_t work_graphs_col_count = 0;
-		dx_collision_compact* work_graphs_compact = dx_run_work_graphs(
-			sh, state_work_graphs, rigids, rigid_count, statics, static_count, shapes, shape_count,
-			true, &work_graphs_col_count);
+		dx_collision_compact* work_graphs_compact =
+			dx_run_work_graphs(sh, state_work_graphs, &grid_config, rigids, rigid_count, statics,
+							   static_count, shapes, shape_count, true, &work_graphs_col_count);
 
 		// GPU vs GPU comparison (sort, then memcmp)
 		// We don't memcmp Work Graph results as they yield slightly different output.
