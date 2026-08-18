@@ -97,6 +97,10 @@ extern "C" dx_shared_state* dx_shared_state_create(void) {
 	return s;
 }
 
+extern "C" void dx_shared_state_set_profiling(dx_shared_state* s, bool enable) {
+	if (s) s->disable_profiling = !enable;
+}
+
 extern "C" void dx_shared_state_destroy(dx_shared_state* s) {
 	if (!s) return;
 	

@@ -44,6 +44,8 @@ static inline void dx_profile_acc_init(dx_profile_acc* a) {
 
 static inline void dx_profile_begin(dx_profile* p, dx_shared_state* sh) {
 	p->count = 0;
+	if (sh->disable_profiling) return;
+
 	p->query_count = 1;
 	p->cpu_start = std::chrono::high_resolution_clock::now();
 
@@ -53,6 +55,7 @@ static inline void dx_profile_begin(dx_profile* p, dx_shared_state* sh) {
 }
 
 static inline void dx_profile_step(dx_profile* p, dx_shared_state* sh, const char* label) {
+	if (sh->disable_profiling) return;
 	if (p->count >= DX_PROFILE_MAX_STEPS) return;
 	int i = p->count;
 	p->labels[i] = label;
@@ -70,6 +73,7 @@ static inline void dx_profile_step(dx_profile* p, dx_shared_state* sh, const cha
 }
 
 static inline void dx_profile_end(dx_profile* p, dx_shared_state* sh) {
+	if (sh->disable_profiling) return;
 	auto cpu_end = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<float, std::milli> cpu_duration = cpu_end - p->cpu_start;
 	p->cpu_total = cpu_duration.count();

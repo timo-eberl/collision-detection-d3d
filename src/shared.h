@@ -43,6 +43,7 @@ struct dx_shared_state {
 	void* fence_event;
 
 	bool is_amd;
+	bool disable_profiling;
 
 	// Input Upload Buffersy (on CPU, GPU readable)
 	ID3D12Resource* up_rigids;

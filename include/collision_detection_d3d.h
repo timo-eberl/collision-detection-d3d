@@ -47,6 +47,7 @@ extern "C" {
 
 dx_shared_state* dx_shared_state_create(void);
 void dx_shared_state_destroy(dx_shared_state* state);
+void dx_shared_state_set_profiling(dx_shared_state* state, bool enable);
 
 dx_state_simple_naive* dx_state_simple_naive_create(dx_shared_state* shared_state);
 void dx_state_simple_naive_destroy(dx_state_simple_naive* state);

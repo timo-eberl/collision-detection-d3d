@@ -261,6 +261,10 @@ int main() {
 		return 1;
 	}
 
+	dx_shared_state* sh_dummy = dx_shared_state_create();
+	dx_shared_state_set_profiling(sh_dummy, false);
+	dx_state_simple_naive* state_dummy = dx_state_simple_naive_create(sh_dummy);
+
 	dx_shared_state* sh = dx_shared_state_create();
 	dx_state_simple_naive* state_naive = dx_state_simple_naive_create(sh);
 	dx_state_simple_binned* state_binned = dx_state_simple_binned_create(sh);
@@ -309,6 +313,14 @@ int main() {
 			.origin_z = -85.0f,
 			.cell_size = 5.0f
 		};
+
+		// Warmup pass, because otherwise the first algorithm will take a performance hit.
+		// Using separate dummy states ensures the first algorithm doesn't get an unfair advantage.
+		uint32_t dummy_count = 0;
+		dx_collision_compact* dummy_compact = dx_run_simple_naive(
+			sh_dummy, state_dummy, &grid_config, rigids, rigid_count, statics, static_count, shapes,
+			shape_count, true, &dummy_count);
+		if (dummy_compact) free(dummy_compact);
 
 		uint32_t naive_col_count = 0;
 		dx_collision_compact* naive_compact =
@@ -409,6 +421,9 @@ int main() {
 	dx_state_execute_indirect_destroy(state_indirect);
 	dx_state_work_graphs_destroy(state_work_graphs);
 	dx_shared_state_destroy(sh);
+
+	dx_state_simple_naive_destroy(state_dummy);
+	dx_shared_state_destroy(sh_dummy);
 
 	fclose(file);
 	return 0;
