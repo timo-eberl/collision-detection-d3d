@@ -463,7 +463,7 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 		sh->cmd_list->SetPipelineState(state->pso_broad_phase);
 		sh->cmd_list->Dispatch(2048, 1, 1);
 		PIXEndEvent(sh->cmd_list);
-		dx_profile_step(&prof, sh, "broad_phase");
+		dx_profile_step(&prof, sh, "query");
 
 		// --- Init Graph (Clamp count) ---
 		sh->cmd_list->SetPipelineState(state->pso_init_graph);

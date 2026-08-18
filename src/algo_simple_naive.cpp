@@ -409,7 +409,7 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 		dx_profile_acc_init(&prof_acc);
 		prof_init = true;
 	}
-	dx_profile_log(&prof, &prof_acc, "simple_naive_grid_a", 10);
+	dx_profile_log(&prof, &prof_acc, "simple_naive", 10);
 
 	return h_cols;
 }

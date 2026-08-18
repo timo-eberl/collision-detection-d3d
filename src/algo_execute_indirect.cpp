@@ -358,7 +358,7 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 		PIXEndEvent(sh->cmd_list);
 	}
 	
-	dx_profile_step(&prof, sh, "broad");
+	dx_profile_step(&prof, sh, "query");
 
 	// Barrier to sync InterlockedAdds before reading them in the prep shader, and to transition
 	// the potential pairs list to SRV so the narrow phase can consume it
