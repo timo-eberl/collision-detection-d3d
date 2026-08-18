@@ -45,7 +45,7 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 	dx_entity e = entities_srv[i];
 	dx_shape s = shapes_srv[e.shape_index];
 
-	packed_aabb box;
+	packed_aabb box = (packed_aabb)0;
 	if (e.shape_type == 0) {
 		float radius = s.data.x;
 		box.min_x = e.position.x - radius;
@@ -78,10 +78,12 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 		box.min_z = e.position.z - half_size.z;
 		box.max_z = e.position.z + half_size.z;
 	}
+	box.shape_type = e.shape_type;
+	box.pad = 0;
 	aabb_uav[i] = box;
 }
 
-void emit_overlap(uint a_idx, uint b_idx, uint b_type) {
+void emit_overlap(uint a_idx, uint b_idx, uint b_type, uint type_a, uint type_b) {
 	uint idx;
 	InterlockedAdd(pair_count_uav[0], 1, idx);
 	if (idx < max_collisions) {

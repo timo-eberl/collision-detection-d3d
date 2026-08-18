@@ -24,7 +24,7 @@ struct dx_potential_pair {
 	uint32_t pad;
 };
 
-typedef struct { float min_x, max_x, min_y, max_y, min_z, max_z; } packed_aabb;
+typedef struct { float min_x, max_x, min_y, max_y, min_z, max_z; uint32_t shape_type; uint32_t pad; } packed_aabb;
 
 // Matches D3D12_NODE_GPU_INPUT memory layout.
 struct dx_node_gpu_input {

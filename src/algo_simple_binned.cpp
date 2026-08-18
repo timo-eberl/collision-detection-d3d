@@ -23,7 +23,7 @@ struct dx_potential_pair {
 	uint32_t pad;
 };
 
-typedef struct { float min_x, max_x, min_y, max_y, min_z, max_z; } packed_aabb;
+typedef struct { float min_x, max_x, min_y, max_y, min_z, max_z; uint32_t shape_type; uint32_t pad; } packed_aabb;
 
 struct dx_state_simple_binned {
 	dx_state_grid_a* grid_builder;

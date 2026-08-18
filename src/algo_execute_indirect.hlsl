@@ -53,7 +53,7 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 	dx_entity e = entities_srv[i];
 	dx_shape s = shapes_srv[e.shape_index];
 
-	packed_aabb box;
+	packed_aabb box = (packed_aabb)0;
 	if (e.shape_type == 0) {
 		float radius = s.data.x;
 		box.min_x = e.position.x - radius;
@@ -86,13 +86,12 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 		box.min_z = e.position.z - half_size.z;
 		box.max_z = e.position.z + half_size.z;
 	}
+	box.shape_type = e.shape_type;
+	box.pad = 0;
 	aabb_uav[i] = box;
 }
 
-void emit_overlap(uint a_idx, uint b_idx, uint b_type) {
-	uint type_a = entities_srv[a_idx].shape_type;
-	uint type_b = (b_type == 1) ? entities_srv[b_idx].shape_type : statics_srv[b_idx].shape_type;
-	
+void emit_overlap(uint a_idx, uint b_idx, uint b_type, uint type_a, uint type_b) {
 	uint min_t = min(type_a, type_b);
 	uint max_t = max(type_a, type_b);
 	uint bin_idx = (max_t * (max_t + 1)) / 2 + min_t;

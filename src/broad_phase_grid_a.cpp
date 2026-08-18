@@ -230,7 +230,7 @@ uint32_t dx_grid_a_build(dx_shared_state* sh, dx_state_grid_a* s,
 				  D3D12_BARRIER_ACCESS_UNORDERED_ACCESS, D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
 	// Phase 0c: Permute
-	ensure_dx_buffer(sh->device, &s->d_sorted_aabbs, &s->d_sorted_aabbs_size, total_padded, 24,
+	ensure_dx_buffer(sh->device, &s->d_sorted_aabbs, &s->d_sorted_aabbs_size, total_padded, 32,
 					 D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 	sh->cmd_list->SetComputeRootSignature(s->root_sig);
 	clear_grid_a_bindings(sh->cmd_list);

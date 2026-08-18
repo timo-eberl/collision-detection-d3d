@@ -24,6 +24,8 @@ struct packed_aabb {
 	float max_y;
 	float min_z;
 	float max_z;
+	uint shape_type;
+	uint pad;
 };
 
 struct dx_collision_full {

@@ -33,6 +33,9 @@ uint lowest_common_cell(packed_aabb a, packed_aabb b) {
 	return cell_index(sx, sy, sz, res_x, res_y);
 }
 
+#ifdef IS_WORK_GRAPHS
+[Shader("compute")]
+#endif
 [numthreads(256, 1, 1)]
 void cs_broad_phase(uint3 DTid : SV_DispatchThreadID) {
 	uint tid = DTid.x;
@@ -62,7 +65,7 @@ void cs_broad_phase(uint3 DTid : SV_DispatchThreadID) {
 			if (ci != lowest_common_cell(ri, r_neigh)) continue;
 
 			emit_overlap(my_original_idx, is_rigid ? other_idx : other_idx - grid_rigid_count, 
-						 is_rigid ? 1 : 0);
+						 is_rigid ? 1 : 0, ri.shape_type, r_neigh.shape_type);
 		}
 	}
 }
