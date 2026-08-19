@@ -62,6 +62,9 @@ struct dx_state_work_graphs {
 
 	ID3D12Resource* d_backing_mem;
 	size_t d_backing_mem_size;
+
+	dx_collision_compact* h_cols;
+	size_t h_cols_capacity;
 };
 
 static void bind_universal_context(ID3D12GraphicsCommandList7* cmd, dx_shared_state* sh,
@@ -267,6 +270,7 @@ extern "C" void dx_state_work_graphs_destroy(dx_state_work_graphs* s) {
 	if (s->up_gpu_input) s->up_gpu_input->Release();
 	if (s->d_gpu_input) s->d_gpu_input->Release();
 	if (s->d_backing_mem) s->d_backing_mem->Release();
+	if (s->h_cols) free(s->h_cols);
 	free(s);
 }
 
@@ -541,7 +545,8 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 
 		execute_and_wait(sh);
 
-		h_cols = shared_read_collisions(sh->rb_collisions, count);
+		h_cols = shared_read_collisions(sh->rb_collisions, count, &state->h_cols,
+										&state->h_cols_capacity);
 		*out_count = count;
 	}
 

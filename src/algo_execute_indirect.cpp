@@ -58,6 +58,9 @@ struct dx_state_execute_indirect {
 
 	ID3D12Resource* d_indirect_args;
 	size_t d_indirect_args_size;
+
+	dx_collision_compact* h_cols;
+	size_t h_cols_capacity;
 };
 
 static void bind_universal_context(ID3D12GraphicsCommandList7* cmd, dx_shared_state* sh,
@@ -202,6 +205,7 @@ extern "C" void dx_state_execute_indirect_destroy(dx_state_execute_indirect* s) 
 	if (s->d_pair_count) s->d_pair_count->Release();
 	if (s->rb_pair_count) s->rb_pair_count->Release();
 	if (s->d_indirect_args) s->d_indirect_args->Release();
+	if (s->h_cols) free(s->h_cols);
 	free(s);
 }
 
@@ -445,7 +449,8 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 
 		execute_and_wait(sh);
 
-		h_cols = shared_read_collisions(sh->rb_collisions, count);
+		h_cols = shared_read_collisions(sh->rb_collisions, count, &state->h_cols,
+										&state->h_cols_capacity);
 		*out_count = count;
 	}
 

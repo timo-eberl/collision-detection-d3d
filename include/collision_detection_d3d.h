@@ -52,6 +52,7 @@ void dx_shared_state_set_profiling(dx_shared_state* state, bool enable);
 dx_state_simple_naive* dx_state_simple_naive_create(dx_shared_state* shared_state);
 void dx_state_simple_naive_destroy(dx_state_simple_naive* state);
 
+// The returned array is managed internally by the state object and must not be freed.
 dx_collision_compact* dx_run_simple_naive(dx_shared_state* shared_state,
 										  dx_state_simple_naive* state,
 										  const dx_grid_config* config,
@@ -63,6 +64,7 @@ dx_collision_compact* dx_run_simple_naive(dx_shared_state* shared_state,
 dx_state_simple_binned* dx_state_simple_binned_create(dx_shared_state* shared_state);
 void dx_state_simple_binned_destroy(dx_state_simple_binned* state);
 
+// The returned array is managed internally by the state object and must not be freed.
 dx_collision_compact* dx_run_simple_binned(dx_shared_state* shared_state,
 										   dx_state_simple_binned* state,
 										   const dx_grid_config* config,
@@ -74,6 +76,7 @@ dx_collision_compact* dx_run_simple_binned(dx_shared_state* shared_state,
 dx_state_execute_indirect* dx_state_execute_indirect_create(dx_shared_state* shared_state);
 void dx_state_execute_indirect_destroy(dx_state_execute_indirect* state);
 
+// The returned array is managed internally by the state object and must not be freed.
 dx_collision_compact* dx_run_execute_indirect(dx_shared_state* shared_state,
 											  dx_state_execute_indirect* state,
 											  const dx_grid_config* config,
@@ -85,6 +88,7 @@ dx_collision_compact* dx_run_execute_indirect(dx_shared_state* shared_state,
 dx_state_work_graphs* dx_state_work_graphs_create(dx_shared_state* shared_state);
 void dx_state_work_graphs_destroy(dx_state_work_graphs* state);
 
+// The returned array is managed internally by the state object and must not be freed.
 dx_collision_compact* dx_run_work_graphs(dx_shared_state* shared_state,
 										 dx_state_work_graphs* state,
 										 const dx_grid_config* config,

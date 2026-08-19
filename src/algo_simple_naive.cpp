@@ -46,6 +46,9 @@ struct dx_state_simple_naive {
 
 	ID3D12Resource* rb_pair_count;
 	size_t rb_pair_count_size;
+
+	dx_collision_compact* h_cols;
+	size_t h_cols_capacity;
 };
 
 static void bind_universal_context(ID3D12GraphicsCommandList7* cmd, dx_shared_state* sh,
@@ -63,7 +66,7 @@ static void bind_universal_context(ID3D12GraphicsCommandList7* cmd, dx_shared_st
 	cmd->SetComputeRootShaderResourceView(7, state->d_potential_pairs->GetGPUVirtualAddress()); // t5
 
 	// Grid outputs (t6 - t10)
-	cmd->SetComputeRootShaderResourceView(8, dx_grid_a_get_sorted_keys(state->grid_builder)); 
+	cmd->SetComputeRootShaderResourceView(8, dx_grid_a_get_sorted_keys(state->grid_builder));
 	cmd->SetComputeRootShaderResourceView(9, dx_grid_a_get_sorted_aabbs(state->grid_builder));
 	cmd->SetComputeRootShaderResourceView(10, dx_grid_a_get_sorted_indices(state->grid_builder));
 	cmd->SetComputeRootShaderResourceView(11, dx_grid_a_get_sorted_vals(state->grid_builder));
@@ -78,7 +81,7 @@ static void bind_universal_context(ID3D12GraphicsCommandList7* cmd, dx_shared_st
 
 dx_state_simple_naive* dx_state_simple_naive_create(dx_shared_state* sh) {
 	dx_state_simple_naive* s = (dx_state_simple_naive*)calloc(1, sizeof(dx_state_simple_naive));
-	
+
 	s->grid_builder = dx_grid_a_create(sh->device, sh->is_amd);
 
 	D3D12_ROOT_PARAMETER root_params[18] = {};
@@ -168,13 +171,14 @@ void dx_state_simple_naive_destroy(dx_state_simple_naive* s) {
 	if (s->d_potential_pairs) s->d_potential_pairs->Release();
 	if (s->d_pair_count) s->d_pair_count->Release();
 	if (s->rb_pair_count) s->rb_pair_count->Release();
+	if (s->h_cols) free(s->h_cols);
 	free(s);
 }
 
 dx_collision_compact*
 dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_grid_config* config,
-					const dx_entity* rigids, uint32_t rigid_count, const dx_entity* statics, 
-					uint32_t static_count, const dx_shape* shapes, uint32_t shape_count, 
+					const dx_entity* rigids, uint32_t rigid_count, const dx_entity* statics,
+					uint32_t static_count, const dx_shape* shapes, uint32_t shape_count,
 					bool statics_changed, uint32_t* out_count) {
 	*out_count = 0;
 	if (rigid_count == 0) return nullptr;
@@ -244,14 +248,14 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 	// --- AABB Prep Phase ---
 	sh->cmd_list->SetComputeRootSignature(state->root_sig);
 	sh->cmd_list->SetPipelineState(state->pso_aabb_prep);
-	
+
 	bind_universal_context(sh->cmd_list, sh, state, static_count);
 
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 255, 0), "Phase: AABB Prep");
 
 	uint32_t constants[5] = { rigid_count, rigid_count, static_count, kernel_max, 0 };
 	sh->cmd_list->SetComputeRoot32BitConstants(0, 5, constants, 0);
-	
+
 	// Prep Rigids
 	sh->cmd_list->SetComputeRootUnorderedAccessView(13, state->d_aabb_rigids->GetGPUVirtualAddress()); // u0
 	sh->cmd_list->Dispatch(grid_size, 1, 1);
@@ -278,11 +282,15 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 	D3D12_BARRIER_GROUP bg_prep = {D3D12_BARRIER_TYPE_GLOBAL, 1, &gb_prep};
 	sh->cmd_list->Barrier(1, &bg_prep);
 
+	dx_profile_cpu_step(&prof, "cpu_record_prep");
+
 	// --- Build Grid ---
-	uint32_t total_keys = dx_grid_a_build(sh, state->grid_builder, config, rigid_count, static_count, 
+	uint32_t total_keys = dx_grid_a_build(sh, state->grid_builder, config, rigid_count, static_count,
 	                                      state->d_aabb_rigids->GetGPUVirtualAddress(),
 	                                      static_count > 0 ? state->d_aabb_statics->GetGPUVirtualAddress() : 0);
-	
+
+	dx_profile_cpu_step(&prof, "cpu_grid_build");
+
 	D3D12_GLOBAL_BARRIER gb_build = {};
 	gb_build.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 	gb_build.SyncAfter = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
@@ -297,7 +305,7 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 		// --- Broad Phase (Grid Traversal) ---
 		sh->cmd_list->SetComputeRootSignature(state->root_sig);
 		sh->cmd_list->SetPipelineState(state->pso_broad);
-		
+
 		bind_universal_context(sh->cmd_list, sh, state, static_count);
 
 		uint32_t constants_bp[5] = { rigid_count, rigid_count, static_count, kernel_max, 0 };
@@ -312,7 +320,7 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 		sh->cmd_list->SetComputeRoot32BitConstants(1, 11, grid_constants, 0);
 
 		// Set AABB u0 to null safely
-		sh->cmd_list->SetComputeRootUnorderedAccessView(13, 0); 
+		sh->cmd_list->SetComputeRootUnorderedAccessView(13, 0);
 
 		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 0), "Phase: Broad Dispatch");
 		sh->cmd_list->Dispatch(2048, 1, 1);
@@ -336,6 +344,7 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 								   sizeof(uint32_t));
 
 	execute_and_wait(sh);
+	dx_profile_cpu_step(&prof, "cpu_wait_broad");
 
 	uint32_t pair_count = 0;
 	void* mapped = nullptr;
@@ -355,7 +364,7 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 	if (pair_count > 0) {
 		sh->cmd_list->SetComputeRootSignature(state->root_sig);
 		sh->cmd_list->SetPipelineState(state->pso_narrow);
-		
+
 		// Rebind everything since execute_and_wait wiped the command list
 		bind_universal_context(sh->cmd_list, sh, state, static_count);
 
@@ -381,6 +390,7 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 	sh->cmd_list->CopyBufferRegion(sh->rb_col_count, 0, sh->d_col_count, 0, sizeof(uint32_t));
 
 	execute_and_wait(sh);
+	dx_profile_cpu_step(&prof, "cpu_wait_narrow");
 
 	count = shared_read_count(sh->rb_col_count);
 
@@ -396,8 +406,11 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 		dx_profile_step(&prof, sh, "readback");
 
 		execute_and_wait(sh);
+		dx_profile_cpu_step(&prof, "cpu_wait_readback");
 
-		h_cols = shared_read_collisions(sh->rb_collisions, count);
+		h_cols = shared_read_collisions(sh->rb_collisions, count, &state->h_cols,
+										&state->h_cols_capacity);
+		dx_profile_cpu_step(&prof, "cpu_memcpy_results");
 		*out_count = count;
 	}
 

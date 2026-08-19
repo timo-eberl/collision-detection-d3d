@@ -320,7 +320,6 @@ int main() {
 		dx_collision_compact* dummy_compact = dx_run_simple_naive(
 			sh_dummy, state_dummy, &grid_config, rigids, rigid_count, statics, static_count, shapes,
 			shape_count, true, &dummy_count);
-		if (dummy_compact) free(dummy_compact);
 
 		uint32_t naive_col_count = 0;
 		dx_collision_compact* naive_compact =
@@ -401,11 +400,6 @@ int main() {
 		// Flush, so stdout and stderr messages are printed in order (OS dependent)
 		fflush(stdout);
 		fflush(stderr);
-
-		if (naive_compact) free(naive_compact);
-		if (binned_compact) free(binned_compact);
-		if (indirect_compact) free(indirect_compact);
-		if (work_graphs_compact) free(work_graphs_compact);
 
 		free(rigids);
 		free(statics);

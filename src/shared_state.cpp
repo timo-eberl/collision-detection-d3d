@@ -22,7 +22,7 @@ extern "C" dx_shared_state* dx_shared_state_create(void) {
 
 	IDXCoreAdapter* adapter = nullptr;
 	if (adapter_list->GetAdapterCount() > 0) {
-		hr = adapter_list->GetAdapter(1, IID_PPV_ARGS(&adapter));
+		hr = adapter_list->GetAdapter(0, IID_PPV_ARGS(&adapter));
 		if (SUCCEEDED(hr)) {
 			ID3D12Device* base_device = nullptr;
 			hr = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&base_device));

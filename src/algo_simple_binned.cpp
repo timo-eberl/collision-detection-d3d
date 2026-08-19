@@ -46,6 +46,9 @@ struct dx_state_simple_binned {
 
 	ID3D12Resource* rb_pair_count;
 	size_t rb_pair_count_size;
+
+	dx_collision_compact* h_cols;
+	size_t h_cols_capacity;
 };
 
 static void bind_universal_context(ID3D12GraphicsCommandList7* cmd, dx_shared_state* sh,
@@ -169,6 +172,7 @@ extern "C" void dx_state_simple_binned_destroy(dx_state_simple_binned* s) {
 	if (s->d_potential_pairs) s->d_potential_pairs->Release();
 	if (s->d_pair_count) s->d_pair_count->Release();
 	if (s->rb_pair_count) s->rb_pair_count->Release();
+	if (s->h_cols) free(s->h_cols);
 	free(s);
 }
 
@@ -424,7 +428,8 @@ dx_run_simple_binned(dx_shared_state* sh, dx_state_simple_binned* state,
 
 		execute_and_wait(sh);
 
-		h_cols = shared_read_collisions(sh->rb_collisions, count);
+		h_cols = shared_read_collisions(sh->rb_collisions, count, &state->h_cols,
+										&state->h_cols_capacity);
 		*out_count = count;
 	}
 

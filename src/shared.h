@@ -262,14 +262,24 @@ static uint32_t shared_read_count(ID3D12Resource* rb_col_count) {
 	return count;
 }
 
-// Maps the readback buffer, allocates a host array, and copies the final collision structs.
-static dx_collision_compact* shared_read_collisions(ID3D12Resource* rb_collisions, uint32_t count) {
-	dx_collision_compact* h_cols = (dx_collision_compact*)malloc(count * sizeof(dx_collision_compact));
+// Maps the readback buffer and copies the final collision structs into a persistent host array.
+static inline dx_collision_compact* shared_read_collisions(ID3D12Resource* rb_collisions,
+														   uint32_t count,
+														   dx_collision_compact** h_cols,
+														   size_t* capacity) {
+	if (*capacity < count) {
+		size_t new_cap = count * 2;
+		if (new_cap < 1024) new_cap = 1024;
+		*h_cols = (dx_collision_compact*)realloc(*h_cols, new_cap * sizeof(dx_collision_compact));
+		*capacity = new_cap;
+	}
+
 	void* mapped = nullptr;
 	rb_collisions->Map(0, nullptr, &mapped);
-	memcpy(h_cols, mapped, count * sizeof(dx_collision_compact));
+	memcpy(*h_cols, mapped, count * sizeof(dx_collision_compact));
 	rb_collisions->Unmap(0, nullptr);
-	return h_cols;
+	
+	return *h_cols;
 }
 
 #endif
