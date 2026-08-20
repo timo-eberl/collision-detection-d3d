@@ -345,6 +345,11 @@ endif()
 add_executable(${PROJECT_NAME}_app src/main.cpp)
 target_link_libraries(${PROJECT_NAME}_app PRIVATE ${PROJECT_NAME})
 
+# Force MinGW to embed the runtime libraries into the build so MinGW builds launch on Windows
+if(MINGW)
+	target_link_options(${PROJECT_NAME}_app PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
+
 # For development. Allows us to load the collision_test_data.bin from the project root, regardless
 # of the working directory
 target_compile_definitions(${PROJECT_NAME}_app PRIVATE PROJECT_ROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\")
