@@ -33,6 +33,15 @@ extern "C" dx_shared_state* dx_shared_state_create(void) {
 				base_device->Release();
 				
 				if (SUCCEEDED(hr)) {
+#ifdef CDDX_ENABLE_PROFILER
+					// Lock GPU clocks to prevent power state transitions during profiling.
+					// However, this doesn't achieve peak performance.
+					// Note: This requires Windows Developer Mode to be enabled.
+					// if (SUCCEEDED(s->device->SetStablePowerState(TRUE))) {
+					// 	fprintf(stderr, "[dx12] Stable power state enabled.\n");
+					// }
+#endif
+
 					char desc[128] = {0};
 					hr = adapter->GetProperty(DXCoreAdapterProperty::DriverDescription,
 											  sizeof(desc), desc);
