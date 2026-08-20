@@ -13,6 +13,11 @@
 #define BENCHMARK_FRAME_START 160
 #define BENCHMARK_FRAME_END 169
 
+#define ENABLE_ALGO_NAIVE 1
+#define ENABLE_ALGO_BINNED 1
+#define ENABLE_ALGO_INDIRECT 1
+#define ENABLE_ALGO_WORK_GRAPHS 1
+
 #ifndef PROJECT_ROOT_DIR
 #define PROJECT_ROOT_DIR "."
 #endif
@@ -303,10 +308,15 @@ int main() {
 	}
 
 	dx_shared_state* sh = dx_shared_state_create();
-	dx_state_simple_naive* state_naive = dx_state_simple_naive_create(sh);
-	dx_state_simple_binned* state_binned = dx_state_simple_binned_create(sh);
-	dx_state_execute_indirect* state_indirect = dx_state_execute_indirect_create(sh);
-	dx_state_work_graphs* state_work_graphs = dx_state_work_graphs_create(sh);
+	dx_state_simple_naive* state_naive = nullptr;
+	dx_state_simple_binned* state_binned = nullptr;
+	dx_state_execute_indirect* state_indirect = nullptr;
+	dx_state_work_graphs* state_work_graphs = nullptr;
+
+	if (ENABLE_ALGO_NAIVE) state_naive = dx_state_simple_naive_create(sh);
+	if (ENABLE_ALGO_BINNED) state_binned = dx_state_simple_binned_create(sh);
+	if (ENABLE_ALGO_INDIRECT) state_indirect = dx_state_execute_indirect_create(sh);
+	if (ENABLE_ALGO_WORK_GRAPHS) state_work_graphs = dx_state_work_graphs_create(sh);
 
 	uint32_t frame_index = 0;
 	uint32_t counts[4];
@@ -356,7 +366,8 @@ int main() {
 			printf("Warmup (Frames %u - %u)...\n", WARMUP_FRAME_START, WARMUP_FRAME_END);
 		}
 		if (frame_index == BENCHMARK_FRAME_START) {
-			printf("\n--- Benchmarking (Frames %u - %u) ---\n", BENCHMARK_FRAME_START, BENCHMARK_FRAME_END);
+			printf("\n--- Benchmarking (Frames %u - %u) ---\n",
+				   BENCHMARK_FRAME_START, BENCHMARK_FRAME_END);
 		}
 
 		// Define the grid configuration based on the scene bounds + padding
@@ -373,24 +384,36 @@ int main() {
 		dx_shared_state_set_profiling(sh, is_benchmark);
 
 		uint32_t naive_col_count = 0;
-		dx_collision_compact* naive_compact =
-			dx_run_simple_naive(sh, state_naive, &grid_config, rigids, rigid_count, statics,
-								static_count, shapes, shape_count, true, &naive_col_count);
+		dx_collision_compact* naive_compact = nullptr;
+		if (ENABLE_ALGO_NAIVE) {
+			naive_compact = dx_run_simple_naive(sh, state_naive, &grid_config, rigids,
+												rigid_count, statics, static_count, shapes,
+												shape_count, true, &naive_col_count);
+		}
 
 		uint32_t binned_col_count = 0;
-		dx_collision_compact* binned_compact =
-			dx_run_simple_binned(sh, state_binned, &grid_config, rigids, rigid_count, statics,
-								 static_count, shapes, shape_count, true, &binned_col_count);
+		dx_collision_compact* binned_compact = nullptr;
+		if (ENABLE_ALGO_BINNED) {
+			binned_compact = dx_run_simple_binned(sh, state_binned, &grid_config, rigids,
+												  rigid_count, statics, static_count, shapes,
+												  shape_count, true, &binned_col_count);
+		}
 
 		uint32_t indirect_col_count = 0;
-		dx_collision_compact* indirect_compact =
-			dx_run_execute_indirect(sh, state_indirect, &grid_config, rigids, rigid_count, statics,
-									static_count, shapes, shape_count, true, &indirect_col_count);
+		dx_collision_compact* indirect_compact = nullptr;
+		if (ENABLE_ALGO_INDIRECT) {
+			indirect_compact = dx_run_execute_indirect(sh, state_indirect, &grid_config, rigids,
+													   rigid_count, statics, static_count, shapes,
+													   shape_count, true, &indirect_col_count);
+		}
 
 		uint32_t wg_col_count = 0;
-		dx_collision_compact* wg_compact =
-			dx_run_work_graphs(sh, state_work_graphs, &grid_config, rigids, rigid_count, statics,
-							   static_count, shapes, shape_count, true, &wg_col_count);
+		dx_collision_compact* wg_compact = nullptr;
+		if (ENABLE_ALGO_WORK_GRAPHS) {
+			wg_compact = dx_run_work_graphs(sh, state_work_graphs, &grid_config, rigids,
+											rigid_count, statics, static_count, shapes,
+											shape_count, true, &wg_col_count);
+		}
 
 		if (is_benchmark && DEFERRED_VALIDATION) {
 			recorded_frame rec = {};
@@ -434,60 +457,45 @@ int main() {
 
 		for (size_t k = 0; k < recorded_frames.size(); ++k) {
 			recorded_frame& rec = recorded_frames[k];
-			// GPU vs GPU comparison (sort, then memcmp)
-			// We don't memcmp Work Graph results as they yield slightly different output.
-			// Presumably this is caused by the different compiler target profiles (lib_6_8 for
-			// Work Graphs vs cs_6_8 for the compute shaders).
-			bool pipeline_match = true;
 			
-			if (rec.naive_col_count != rec.binned_col_count || 
-				rec.binned_col_count != rec.indirect_col_count) {
-				printf("❌ Frame %u FAILED: Pipeline mismatch! "
-					   "Naive (%u) vs Binned (%u) vs Indirect (%u)\n",
-					   rec.frame_index, rec.naive_col_count, rec.binned_col_count, 
-					   rec.indirect_col_count);
-				pipeline_match = false;
-			}
-			else if (rec.binned_col_count > 0) {
-				qsort(rec.naive_compact, rec.naive_col_count, sizeof(dx_collision_compact),
-					  compare_compact_collisions);
-				qsort(rec.binned_compact, rec.binned_col_count, sizeof(dx_collision_compact),
-					  compare_compact_collisions);
-				qsort(rec.indirect_compact, rec.indirect_col_count, sizeof(dx_collision_compact),
-					  compare_compact_collisions);
-				qsort(rec.wg_compact, rec.wg_col_count, sizeof(dx_collision_compact),
-					  compare_compact_collisions);
-
-				if (memcmp(rec.naive_compact, rec.binned_compact,
-						   rec.binned_col_count * sizeof(dx_collision_compact)) != 0 ||
-					memcmp(rec.binned_compact, rec.indirect_compact,
-						   rec.indirect_col_count * sizeof(dx_collision_compact)) != 0) {
-					printf("❌ Frame %u FAILED: Pipeline mismatch! GPU algorithms returned "
-						   "different data.\n", rec.frame_index);
-					pipeline_match = false;
-				}
+			if (rec.expected_col_count > 0) {
+				qsort(rec.expected_cols, rec.expected_col_count, sizeof(dx_collision_full), 
+					  compare_collisions);
 			}
 
-			if (pipeline_match) {
-				if (rec.expected_col_count > 0) {
-					qsort(rec.expected_cols, rec.expected_col_count, sizeof(dx_collision_full), 
-						  compare_collisions);
-				}
+			bool passed_all = true;
 
-				bool binned_passed = verify_results(
-					"Binned", rec.binned_compact, rec.binned_col_count, 
-					rec.expected_cols, rec.expected_col_count,
-					rec.rigids, rec.rigid_count, rec.statics, rec.shapes, rec.frame_index);
+			if (ENABLE_ALGO_NAIVE) {
+				passed_all &= verify_results("Naive", rec.naive_compact, rec.naive_col_count,
+											 rec.expected_cols, rec.expected_col_count, rec.rigids,
+											 rec.rigid_count, rec.statics, rec.shapes,
+											 rec.frame_index);
+			}
 
-				bool wg_passed = verify_results(
-					"Work Graphs", rec.wg_compact, rec.wg_col_count, 
-					rec.expected_cols, rec.expected_col_count, 
-					rec.rigids, rec.rigid_count, rec.statics, rec.shapes, rec.frame_index);
+			if (ENABLE_ALGO_BINNED) {
+				passed_all &= verify_results("Binned", rec.binned_compact, rec.binned_col_count,
+											 rec.expected_cols, rec.expected_col_count, rec.rigids,
+											 rec.rigid_count, rec.statics, rec.shapes,
+											 rec.frame_index);
+			}
 
-				if (binned_passed && wg_passed) {
-					printf("✅ Frame %u PASSED: %u collisions\n", 
-						   rec.frame_index, rec.binned_col_count);
-				}
+			if (ENABLE_ALGO_INDIRECT) {
+				passed_all &= verify_results("Indirect", rec.indirect_compact,
+											 rec.indirect_col_count, rec.expected_cols,
+											 rec.expected_col_count, rec.rigids, rec.rigid_count,
+											 rec.statics, rec.shapes, rec.frame_index);
+			}
+
+			if (ENABLE_ALGO_WORK_GRAPHS) {
+				passed_all &= verify_results("Work Graphs", rec.wg_compact, rec.wg_col_count,
+											 rec.expected_cols, rec.expected_col_count, rec.rigids,
+											 rec.rigid_count, rec.statics, rec.shapes,
+											 rec.frame_index);
+			}
+
+			if (passed_all) {
+				printf("✅ Frame %u PASSED: %u collisions\n",
+					   rec.frame_index, rec.expected_col_count);
 			}
 
 			free(rec.rigids);
