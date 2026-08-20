@@ -292,6 +292,7 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 	const uint32_t block_size = 256;
 	uint32_t grid_size = (rigid_count + block_size - 1) / block_size;
 	dx_profile prof = {0};
+	dx_profile_cpu_begin(&prof, sh);
 
 	shared_ensure_buffers(sh, rigid_count, static_count, shape_count, cols_needed);
 	shared_write_inputs(sh->up_rigids, rigids, rigid_count, sh->up_statics, statics,
@@ -337,7 +338,6 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 						 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 	}
 
-	dx_profile_begin(&prof, sh);
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 0, 0), "Phase: Upload Memory");
 
 	sh->cmd_list->CopyBufferRegion(sh->d_rigids, 0, sh->up_rigids, 0,
@@ -380,7 +380,10 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 	sh->cmd_list->Barrier(1, &bg_upload);
 
 	PIXEndEvent(sh->cmd_list);
-	dx_profile_step(&prof, sh, "upload");
+	
+	execute_and_wait(sh);
+	dx_profile_cpu_step(&prof, "upload");
+	dx_profile_begin(&prof, sh);
 
 	// --- AABB Prep Phase ---
 	sh->cmd_list->SetComputeRootSignature(state->root_sig);
@@ -529,28 +532,28 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 	sh->cmd_list->CopyBufferRegion(sh->rb_col_count, 0, sh->d_col_count, 0, sizeof(uint32_t));
 
 	execute_and_wait(sh);
+	dx_profile_cpu_step(&prof, "work");
+
+	dx_profile_end(&prof, sh);
 
 	count = shared_read_count(sh->rb_col_count);
 	dx_collision_compact* h_cols = nullptr;
 
 	if (count > 0) {
-		dx_profile_step(&prof, sh, "gap_readback");
 		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 0, 255), "Phase: Readback");
 
 		sh->cmd_list->CopyBufferRegion(sh->rb_collisions, 0, sh->d_collisions, 0,
 									   count * sizeof(dx_collision_compact));
 
 		PIXEndEvent(sh->cmd_list);
-		dx_profile_step(&prof, sh, "readback");
 
 		execute_and_wait(sh);
-
 		h_cols = shared_read_collisions(sh->rb_collisions, count, &state->h_cols,
 										&state->h_cols_capacity);
+		dx_profile_cpu_step(&prof, "download");
+
 		*out_count = count;
 	}
-
-	dx_profile_end(&prof, sh);
 
 	static dx_profile_acc prof_acc;
 	static bool prof_init = false;
@@ -558,6 +561,7 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 		dx_profile_acc_init(&prof_acc);
 		prof_init = true;
 	}
+	// dx_profile_log_frame(&prof, "work_graphs");
 	dx_profile_log(&prof, &prof_acc, "work_graphs", 10);
 
 	return h_cols;

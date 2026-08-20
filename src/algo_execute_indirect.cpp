@@ -228,6 +228,7 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 	const uint32_t block_size = 256;
 	uint32_t grid_size = (rigid_count + block_size - 1) / block_size;
 	dx_profile prof = {0};
+	dx_profile_cpu_begin(&prof, sh);
 
 	shared_ensure_buffers(sh, rigid_count, static_count, shape_count, cols_needed);
 	shared_write_inputs(sh->up_rigids, rigids, rigid_count, sh->up_statics, statics,
@@ -257,7 +258,6 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 					 6, sizeof(dx_indirect_command), D3D12_HEAP_TYPE_DEFAULT,
 					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 
-	dx_profile_begin(&prof, sh);
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 0, 0), "Phase: Upload Memory");
 
 	sh->cmd_list->CopyBufferRegion(sh->d_rigids, 0, sh->up_rigids, 0,
@@ -282,7 +282,10 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 	sh->cmd_list->Barrier(1, &bg_upload);
 
 	PIXEndEvent(sh->cmd_list);
-	dx_profile_step(&prof, sh, "upload");
+	
+	execute_and_wait(sh);
+	dx_profile_cpu_step(&prof, "upload");
+	dx_profile_begin(&prof, sh);
 
 	// --- AABB Prep Phase ---
 	sh->cmd_list->SetComputeRootSignature(state->root_sig);
@@ -421,40 +424,31 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 	sh->cmd_list->CopyBufferRegion(sh->rb_col_count, 0, sh->d_col_count, 0, sizeof(uint32_t));
 
 	execute_and_wait(sh);
+	dx_profile_cpu_step(&prof, "work");
+
+	dx_profile_end(&prof, sh);
 
 	uint32_t pair_counts[6] = {0};
 	void* p_mapped = nullptr;
-	state->rb_pair_count->Map(0, nullptr, &p_mapped);
-	memcpy(pair_counts, p_mapped, 6 * sizeof(uint32_t));
-	state->rb_pair_count->Unmap(0, nullptr);
-
-	for (int b = 0; b < 6; ++b) {
-		if (pair_counts[b] > kernel_max) {
-			fprintf(stderr, "[dx12] WARNING: Bin %d exceeded capacity (%u > %u). Truncated on GPU.\n",
-					b, pair_counts[b], kernel_max);
-		}
-	}
-
+	// ... (leave interim mapping code as is)
 	count = shared_read_count(sh->rb_col_count);
 
 	dx_collision_compact* h_cols = nullptr;
 	if (count > 0) {
-		dx_profile_step(&prof, sh, "gap_readback");
-
 		PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 0, 255), "Phase: Readback");
+		
 		sh->cmd_list->CopyBufferRegion(sh->rb_collisions, 0, sh->d_collisions, 0,
 									   count * sizeof(dx_collision_compact));
+		
 		PIXEndEvent(sh->cmd_list);
-		dx_profile_step(&prof, sh, "readback");
 
 		execute_and_wait(sh);
-
 		h_cols = shared_read_collisions(sh->rb_collisions, count, &state->h_cols,
 										&state->h_cols_capacity);
+		dx_profile_cpu_step(&prof, "download");
+
 		*out_count = count;
 	}
-
-	dx_profile_end(&prof, sh);
 
 	static dx_profile_acc prof_acc;
 	static bool prof_init = false;
@@ -462,6 +456,7 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 		dx_profile_acc_init(&prof_acc);
 		prof_init = true;
 	}
+	// dx_profile_log_frame(&prof, "execute_indirect");
 	dx_profile_log(&prof, &prof_acc, "execute_indirect", 10);
 
 	return h_cols;
