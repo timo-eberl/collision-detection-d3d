@@ -135,3 +135,35 @@ RTX 5070 TI:
 [dx12] simple_binned (avg over 10) upload=0.013ms [0.012-0.017] aabb_prep=0.020ms [0.019-0.022] build=0.420ms [0.297-1.350] query=0.328ms [0.310-0.351] gap_narrow=0.085ms [0.072-0.152] narrow=0.082ms [0.077-0.085] gap_readback=0.073ms [0.062-0.092] readback=0.179ms [0.165-0.193] total=1.199ms cpu_total=2.394ms [2.102-4.347]
 [dx12] execute_indirect (avg over 10) upload=0.013ms [0.012-0.017] aabb_prep=0.019ms [0.019-0.020] build=0.414ms [0.306-1.330] query=0.328ms [0.311-0.350] dispatch_prep=0.007ms [0.006-0.008] narrow=0.100ms [0.094-0.102] gap_readback=0.084ms [0.073-0.106] readback=0.179ms [0.163-0.200] total=1.144ms cpu_total=2.330ms [2.026-4.300]
 [dx12] work_graphs (avg over 10) upload=0.013ms [0.012-0.018] aabb_prep=0.018ms [0.017-0.019] build=0.472ms [0.319-1.737] query=0.275ms [0.262-0.290] work_graph=0.428ms [0.401-0.456] gap_readback=0.077ms [0.066-0.097] readback=0.181ms [0.165-0.202] total=1.464ms cpu_total=2.651ms [2.320-4.990]
+
+## fe7d6ab82abdf1d67d9326ac46327201bd5910db (Improve profiling)
+
+RX 9070 XT:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.051ms [0.038-0.074] build=0.778ms [0.309-3.553] query=0.697ms [0.395-0.944] gap_narrow=0.215ms [0.125-0.443] narrow=0.278ms [0.167-0.367] total=2.019ms [1.080ms-4.929ms]
+    CPU: upload=2.288ms work=2.623ms download=1.940ms
+[dx12] simple_binned (avg over 10)
+    GPU: aabb_prep=0.048ms [0.035-0.062] build=0.789ms [0.335-3.551] query=0.712ms [0.404-0.958] gap_narrow=0.169ms [0.119-0.220] narrow=0.153ms [0.098-0.202] total=1.872ms [1.030ms-4.803ms]
+    CPU: upload=1.903ms work=2.461ms download=1.887ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.049ms [0.036-0.061] build=0.826ms [0.335-3.954] query=0.710ms [0.401-0.953] dispatch_prep=0.037ms [0.025-0.047] narrow=0.154ms [0.101-0.198] total=1.775ms [0.901ms-5.068ms]
+    CPU: upload=1.967ms work=2.385ms download=1.889ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.044ms [0.034-0.062] build=0.721ms [0.328-3.429] query=0.594ms [0.392-0.917] work_graph=0.514ms [0.368-0.740] total=1.874ms [1.144ms-5.047ms]
+    CPU: upload=2.444ms work=2.624ms download=2.049ms
+
+## 7d91ce682615c4c96e1def29eca39b2c797ff707 (warmup + deferred validation to avoid amd downclocking)
+
+RX 9070 XT:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.030ms [0.030-0.031] build=0.332ms [0.296-0.356] query=0.411ms [0.393-0.434] gap_narrow=0.135ms [0.117-0.158] narrow=0.166ms [0.159-0.170] total=1.074ms [1.022ms-1.106ms]
+    CPU: upload=1.364ms work=1.240ms download=1.873ms
+[dx12] simple_binned (avg over 10)
+    GPU: aabb_prep=0.030ms [0.030-0.031] build=0.334ms [0.316-0.419] query=0.421ms [0.402-0.442] gap_narrow=0.171ms [0.120-0.332] narrow=0.096ms [0.092-0.098] total=1.052ms [0.966ms-1.213ms]
+    CPU: upload=1.031ms work=1.206ms download=1.805ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.030ms [0.030-0.031] build=0.338ms [0.322-0.350] query=0.419ms [0.403-0.439] disp_prep=0.027ms [0.027-0.028] narrow=0.098ms [0.093-0.100] total=0.912ms [0.892ms-0.933ms]
+    CPU: upload=1.026ms work=1.074ms download=1.778ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.030ms [0.030-0.031] build=0.326ms [0.297-0.358] query=0.410ms [0.394-0.429] work_graph=0.371ms [0.356-0.382] total=1.138ms [1.100ms-1.176ms]
+    CPU: upload=1.035ms work=1.288ms download=1.777ms
