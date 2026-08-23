@@ -112,12 +112,7 @@ void cs_init_graph(uint3 DTid : SV_DispatchThreadID) {
 [NodeIsProgramEntry]
 void RoutePairs(
 	ThreadNodeInputRecord<dx_potential_pair> input,
-	[NodeID("Narrow_Sph_Sph")] [MaxRecords(1)] NodeOutput<dx_potential_pair> out_sph_sph,
-	[NodeID("Narrow_Sph_Cap")] [MaxRecordsSharedWith(out_sph_sph)] NodeOutput<dx_potential_pair> out_sph_cap,
-	[NodeID("Narrow_Sph_Box")] [MaxRecordsSharedWith(out_sph_sph)] NodeOutput<dx_potential_pair> out_sph_box,
-	[NodeID("Narrow_Cap_Cap")] [MaxRecordsSharedWith(out_sph_sph)] NodeOutput<dx_potential_pair> out_cap_cap,
-	[NodeID("Narrow_Cap_Box")] [MaxRecordsSharedWith(out_sph_sph)] NodeOutput<dx_potential_pair> out_cap_box,
-	[NodeID("Narrow_Box_Box")] [MaxRecordsSharedWith(out_sph_sph)] NodeOutput<dx_potential_pair> out_box_box
+	[MaxRecords(1)] [NodeID("NarrowPhase")] [NodeArraySize(6)] NodeOutputArray<dx_potential_pair> out_narrow
 ) {
 	dx_potential_pair p = input.Get();
 	uint type_a = entities_srv[p.a_index].shape_type;
@@ -135,29 +130,9 @@ void RoutePairs(
 	else if (type_a == 1 && type_b == 2) hit_type = 4;
 	else if (type_a == 2 && type_b == 2) hit_type = 5;
 
-	ThreadNodeOutputRecords<dx_potential_pair> r0 = out_sph_sph.GetThreadNodeOutputRecords(hit_type == 0 ? 1 : 0);
-	if (hit_type == 0) r0.Get() = p;
-	r0.OutputComplete();
-
-	ThreadNodeOutputRecords<dx_potential_pair> r1 = out_sph_cap.GetThreadNodeOutputRecords(hit_type == 1 ? 1 : 0);
-	if (hit_type == 1) r1.Get() = p;
-	r1.OutputComplete();
-
-	ThreadNodeOutputRecords<dx_potential_pair> r2 = out_sph_box.GetThreadNodeOutputRecords(hit_type == 2 ? 1 : 0);
-	if (hit_type == 2) r2.Get() = p;
-	r2.OutputComplete();
-
-	ThreadNodeOutputRecords<dx_potential_pair> r3 = out_cap_cap.GetThreadNodeOutputRecords(hit_type == 3 ? 1 : 0);
-	if (hit_type == 3) r3.Get() = p;
-	r3.OutputComplete();
-
-	ThreadNodeOutputRecords<dx_potential_pair> r4 = out_cap_box.GetThreadNodeOutputRecords(hit_type == 4 ? 1 : 0);
-	if (hit_type == 4) r4.Get() = p;
-	r4.OutputComplete();
-
-	ThreadNodeOutputRecords<dx_potential_pair> r5 = out_box_box.GetThreadNodeOutputRecords(hit_type == 5 ? 1 : 0);
-	if (hit_type == 5) r5.Get() = p;
-	r5.OutputComplete();
+	ThreadNodeOutputRecords<dx_potential_pair> r = out_narrow[hit_type].GetThreadNodeOutputRecords(1);
+	r.Get() = p;
+	r.OutputComplete();
 }
 
 void write_collision(dx_potential_pair p, float depth, float3 normal, float3 point_a,
@@ -181,6 +156,7 @@ void write_collision(dx_potential_pair p, float depth, float3 normal, float3 poi
 
 [Shader("node")]
 [NodeLaunch("thread")]
+[NodeID("NarrowPhase", 0)]
 void Narrow_Sph_Sph(ThreadNodeInputRecord<dx_potential_pair> input) {
 	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
@@ -204,6 +180,7 @@ void Narrow_Sph_Sph(ThreadNodeInputRecord<dx_potential_pair> input) {
 
 [Shader("node")]
 [NodeLaunch("thread")]
+[NodeID("NarrowPhase", 1)]
 void Narrow_Sph_Cap(ThreadNodeInputRecord<dx_potential_pair> input) {
 	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
@@ -230,6 +207,7 @@ void Narrow_Sph_Cap(ThreadNodeInputRecord<dx_potential_pair> input) {
 
 [Shader("node")]
 [NodeLaunch("thread")]
+[NodeID("NarrowPhase", 2)]
 void Narrow_Sph_Box(ThreadNodeInputRecord<dx_potential_pair> input) {
 	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
@@ -255,6 +233,7 @@ void Narrow_Sph_Box(ThreadNodeInputRecord<dx_potential_pair> input) {
 
 [Shader("node")]
 [NodeLaunch("thread")]
+[NodeID("NarrowPhase", 3)]
 void Narrow_Cap_Cap(ThreadNodeInputRecord<dx_potential_pair> input) {
 	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
@@ -283,6 +262,7 @@ void Narrow_Cap_Cap(ThreadNodeInputRecord<dx_potential_pair> input) {
 
 [Shader("node")]
 [NodeLaunch("thread")]
+[NodeID("NarrowPhase", 4)]
 void Narrow_Cap_Box(ThreadNodeInputRecord<dx_potential_pair> input) {
 	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
@@ -310,6 +290,7 @@ void Narrow_Cap_Box(ThreadNodeInputRecord<dx_potential_pair> input) {
 
 [Shader("node")]
 [NodeLaunch("thread")]
+[NodeID("NarrowPhase", 5)]
 void Narrow_Box_Box(ThreadNodeInputRecord<dx_potential_pair> input) {
 	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
