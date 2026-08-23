@@ -107,17 +107,16 @@ void emit_overlap(uint a_idx, uint b_idx, uint b_type, uint type_a, uint type_b)
 		potential_pairs_uav[bin_idx * max_collisions + idx] = p;
 	}
 }
+
 #include "grid_a_traversal.hlsli"
 
-// Converts the 6 atomic counters into 6 Dispatch Arguments matching the Command Signature
 [numthreads(6, 1, 1)]
 void cs_dispatch_prep(uint3 DTid : SV_DispatchThreadID) {
 	uint b = DTid.x;
 	if (b >= 6) return;
 
 	uint count = pair_count_uav[b];
-	
-	// Safety clamping is moved to the GPU so the pipeline never has to stall
+
 	if (count > max_collisions) count = max_collisions;
 
 	dx_indirect_command cmd;
@@ -130,15 +129,58 @@ void cs_dispatch_prep(uint3 DTid : SV_DispatchThreadID) {
 	indirect_args_uav[b] = cmd;
 }
 
+void write_collision(dx_potential_pair p, dx_collision_full c, bool swapped) {
+	if (swapped) {
+		c.normal = -c.normal;
+		float3 temp = c.point_a; 
+		c.point_a = c.point_b; 
+		c.point_b = temp;
+	}
+	uint idx;
+	InterlockedAdd(col_count_uav[0], 1, idx);
+	if (idx < max_collisions) {
+		dx_collision_compact comp;
+		comp.a_index = p.a_index;
+		comp.b_index = (p.b_type == 0) ? (p.b_index + rigid_count) : p.b_index;
+		comp.depth = c.depth;
+		comp.point_a = c.point_a;
+		comp.normal = encode_octahedral(c.normal);
+		collisions_uav[idx] = comp;
+	}
+}
+
 [numthreads(256, 1, 1)]
-void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
+void cs_narrow_sph_sph(uint3 DTid : SV_DispatchThreadID) {
 	uint i = DTid.x;
 	if (i >= pair_count) return;
 
-	// The 1D potential pairs buffer is logically partitioned into 6 equal chunks.
-	// This static layout avoids the need to compute and store dynamic offsets per frame.
 	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
+	dx_entity e_a = entities_srv[p.a_index];
+	dx_entity e_b;
+	if (p.b_type == 1) {
+		e_b = entities_srv[p.b_index];
+	} else {
+		e_b = statics_srv[p.b_index];
+	}
+	
+	bool swapped = false;
+	if (e_a.shape_type > e_b.shape_type) {
+		dx_entity temp_e = e_a; e_a = e_b; e_b = temp_e;
+		swapped = true;
+	}
 
+	dx_collision_full c;
+	if (collision_test_sphere_sphere(e_a, shapes_srv[e_a.shape_index], e_b, shapes_srv[e_b.shape_index], c)) {
+		write_collision(p, c, swapped);
+	}
+}
+
+[numthreads(256, 1, 1)]
+void cs_narrow_sph_cap(uint3 DTid : SV_DispatchThreadID) {
+	uint i = DTid.x;
+	if (i >= pair_count) return;
+
+	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
 	dx_entity e_a = entities_srv[p.a_index];
 	dx_entity e_b;
 	if (p.b_type == 1) {
@@ -147,21 +189,118 @@ void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
 		e_b = statics_srv[p.b_index];
 	}
 
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
+	bool swapped = false;
+	if (e_a.shape_type > e_b.shape_type) {
+		dx_entity temp_e = e_a; e_a = e_b; e_b = temp_e;
+		swapped = true;
+	}
 
 	dx_collision_full c;
-	if (evaluate_narrow_phase(e_a, s_a, e_b, s_b, c)) {
-		uint idx;
-		InterlockedAdd(col_count_uav[0], 1, idx);
-		if (idx < max_collisions) {
-			dx_collision_compact comp;
-			comp.a_index = p.a_index;
-			comp.b_index = (p.b_type == 0) ? (p.b_index + rigid_count) : p.b_index;
-			comp.depth = c.depth;
-			comp.point_a = c.point_a;
-			comp.normal = encode_octahedral(c.normal);
-			collisions_uav[idx] = comp;
-		}
+	if (collision_test_sphere_capsule(e_a, shapes_srv[e_a.shape_index], e_b, shapes_srv[e_b.shape_index], c)) {
+		write_collision(p, c, swapped);
+	}
+}
+
+[numthreads(256, 1, 1)]
+void cs_narrow_cap_cap(uint3 DTid : SV_DispatchThreadID) {
+	uint i = DTid.x;
+	if (i >= pair_count) return;
+
+	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
+	dx_entity e_a = entities_srv[p.a_index];
+	dx_entity e_b;
+	if (p.b_type == 1) {
+		e_b = entities_srv[p.b_index];
+	} else {
+		e_b = statics_srv[p.b_index];
+	}
+
+	bool swapped = false;
+	if (e_a.shape_type > e_b.shape_type) {
+		dx_entity temp_e = e_a; e_a = e_b; e_b = temp_e;
+		swapped = true;
+	}
+
+	dx_collision_full c;
+	if (collision_test_capsule_capsule(e_a, shapes_srv[e_a.shape_index], e_b, shapes_srv[e_b.shape_index], c)) {
+		write_collision(p, c, swapped);
+	}
+}
+
+[numthreads(256, 1, 1)]
+void cs_narrow_sph_box(uint3 DTid : SV_DispatchThreadID) {
+	uint i = DTid.x;
+	if (i >= pair_count) return;
+
+	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
+	dx_entity e_a = entities_srv[p.a_index];
+	dx_entity e_b;
+	if (p.b_type == 1) {
+		e_b = entities_srv[p.b_index];
+	} else {
+		e_b = statics_srv[p.b_index];
+	}
+
+	bool swapped = false;
+	if (e_a.shape_type > e_b.shape_type) {
+		dx_entity temp_e = e_a; e_a = e_b; e_b = temp_e;
+		swapped = true;
+	}
+
+	dx_collision_full c;
+	if (collision_test_sphere_obb(e_a, shapes_srv[e_a.shape_index], e_b, shapes_srv[e_b.shape_index], c)) {
+		write_collision(p, c, swapped);
+	}
+}
+
+[numthreads(256, 1, 1)]
+void cs_narrow_cap_box(uint3 DTid : SV_DispatchThreadID) {
+	uint i = DTid.x;
+	if (i >= pair_count) return;
+
+	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
+	dx_entity e_a = entities_srv[p.a_index];
+	dx_entity e_b;
+	if (p.b_type == 1) {
+		e_b = entities_srv[p.b_index];
+	} else {
+		e_b = statics_srv[p.b_index];
+	}
+
+	bool swapped = false;
+	if (e_a.shape_type > e_b.shape_type) {
+		dx_entity temp_e = e_a; e_a = e_b; e_b = temp_e;
+		swapped = true;
+	}
+
+	dx_collision_full c;
+	if (collision_test_capsule_obb(e_a, shapes_srv[e_a.shape_index], e_b, shapes_srv[e_b.shape_index], c)) {
+		write_collision(p, c, swapped);
+	}
+}
+
+[numthreads(256, 1, 1)]
+void cs_narrow_box_box(uint3 DTid : SV_DispatchThreadID) {
+	uint i = DTid.x;
+	if (i >= pair_count) return;
+
+	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
+	dx_entity e_a = entities_srv[p.a_index];
+	dx_entity e_b;
+	if (p.b_type == 1) {
+		e_b = entities_srv[p.b_index];
+	} else {
+		e_b = statics_srv[p.b_index];
+	}
+
+	bool swapped = false;
+	if (e_a.shape_type > e_b.shape_type) {
+		dx_entity temp_e = e_a; e_a = e_b; e_b = temp_e;
+		swapped = true;
+	}
+
+	dx_collision_full c;
+	if (collision_test_obb_obb(e_a, shapes_srv[e_a.shape_index], e_b, shapes_srv[e_b.shape_index], c)) {
+		write_collision(p, c, swapped);
 	}
 }

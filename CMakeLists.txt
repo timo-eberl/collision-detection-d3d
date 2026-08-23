@@ -153,27 +153,48 @@ add_custom_command(
 add_custom_command(
 	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_aabb_shader.h
 		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_broad_shader.h
-		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_shader.h
 		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_prep_shader.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_sph_sph.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_sph_cap.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_cap_cap.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_sph_box.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_cap_box.h
+		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_box_box.h
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_aabb_prep -T cs_6_8 ${DXC_FLAGS}
-		-Vn algo_execute_indirect_aabb_shader
+		-E cs_aabb_prep -T cs_6_8 ${DXC_FLAGS} -Vn algo_execute_indirect_aabb_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_aabb_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_broad_phase -T cs_6_8 ${DXC_FLAGS}
-		-Vn algo_execute_indirect_broad_shader
+		-E cs_broad_phase -T cs_6_8 ${DXC_FLAGS} -Vn algo_execute_indirect_broad_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_broad_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_narrow_phase -T cs_6_8 ${DXC_FLAGS}
-		-Vn algo_execute_indirect_narrow_shader
-		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_shader.h
+		-E cs_dispatch_prep -T cs_6_8 ${DXC_FLAGS} -Vn algo_execute_indirect_prep_shader
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_prep_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_dispatch_prep -T cs_6_8 ${DXC_FLAGS}
-		-Vn algo_execute_indirect_prep_shader
-		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_prep_shader.h
+		-E cs_narrow_sph_sph -T cs_6_8 ${DXC_FLAGS} -Vn algo_execute_indirect_narrow_sph_sph
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_sph_sph.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_narrow_sph_cap -T cs_6_8 ${DXC_FLAGS} -Vn algo_execute_indirect_narrow_sph_cap
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_sph_cap.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_narrow_cap_cap -T cs_6_8 ${DXC_FLAGS} -Vn algo_execute_indirect_narrow_cap_cap
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_cap_cap.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_narrow_sph_box -T cs_6_8 ${DXC_FLAGS} -Vn algo_execute_indirect_narrow_sph_box
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_sph_box.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_narrow_cap_box -T cs_6_8 ${DXC_FLAGS} -Vn algo_execute_indirect_narrow_cap_box
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_cap_box.h
+		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
+	COMMAND ${DXC_EXECUTABLE}
+		-E cs_narrow_box_box -T cs_6_8 ${DXC_FLAGS} -Vn algo_execute_indirect_narrow_box_box
+		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_box_box.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
 	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
 			${CMAKE_CURRENT_SOURCE_DIR}/src/collision_math.hlsli
@@ -288,7 +309,12 @@ add_library(${PROJECT_NAME}
 	${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_narrow_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_aabb_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_broad_shader.h
-	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_shader.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_sph_sph.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_sph_cap.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_cap_cap.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_sph_box.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_cap_box.h
+	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_box_box.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_prep_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_lib_shader.h
 	${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_init_shader.h

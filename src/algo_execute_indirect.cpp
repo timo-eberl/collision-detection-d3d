@@ -1,7 +1,12 @@
 #include "algo_execute_indirect_aabb_shader.h"
 #include "algo_execute_indirect_broad_shader.h"
-#include "algo_execute_indirect_narrow_shader.h"
 #include "algo_execute_indirect_prep_shader.h"
+#include "algo_execute_indirect_narrow_sph_sph.h"
+#include "algo_execute_indirect_narrow_sph_cap.h"
+#include "algo_execute_indirect_narrow_cap_cap.h"
+#include "algo_execute_indirect_narrow_sph_box.h"
+#include "algo_execute_indirect_narrow_cap_box.h"
+#include "algo_execute_indirect_narrow_box_box.h"
 #include "collision_detection_d3d.h"
 #include "dx_profile.h"
 #include "shared.h"
@@ -41,7 +46,10 @@ struct dx_state_execute_indirect {
 	ID3D12PipelineState* pso_aabb_prep;
 	ID3D12PipelineState* pso_broad;
 	ID3D12PipelineState* pso_prep;
-	ID3D12PipelineState* pso_narrow;
+	
+	// Array holding the specialized narrow phase PSOs, strictly mapped to bin indices
+	ID3D12PipelineState* pso_narrow_variants[6];
+	
 	ID3D12CommandSignature* cmd_signature;
 
 	ID3D12Resource* d_aabb_rigids;
@@ -165,22 +173,40 @@ extern "C" dx_state_execute_indirect* dx_state_execute_indirect_create(dx_shared
 	pso_desc.CS.BytecodeLength = sizeof(algo_execute_indirect_prep_shader);
 	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_prep)));
 
-	pso_desc.CS.pShaderBytecode = algo_execute_indirect_narrow_shader;
-	pso_desc.CS.BytecodeLength = sizeof(algo_execute_indirect_narrow_shader);
-	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_narrow)));
+	// Instantiate specialized narrow phase PSOs mapped exactly to the bin indices
+	pso_desc.CS.pShaderBytecode = algo_execute_indirect_narrow_sph_sph;
+	pso_desc.CS.BytecodeLength = sizeof(algo_execute_indirect_narrow_sph_sph);
+	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_narrow_variants[0])));
 
-	// Setup the exact layout for the indirect command signature
+	pso_desc.CS.pShaderBytecode = algo_execute_indirect_narrow_sph_cap;
+	pso_desc.CS.BytecodeLength = sizeof(algo_execute_indirect_narrow_sph_cap);
+	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_narrow_variants[1])));
+
+	pso_desc.CS.pShaderBytecode = algo_execute_indirect_narrow_cap_cap;
+	pso_desc.CS.BytecodeLength = sizeof(algo_execute_indirect_narrow_cap_cap);
+	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_narrow_variants[2])));
+
+	pso_desc.CS.pShaderBytecode = algo_execute_indirect_narrow_sph_box;
+	pso_desc.CS.BytecodeLength = sizeof(algo_execute_indirect_narrow_sph_box);
+	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_narrow_variants[3])));
+
+	pso_desc.CS.pShaderBytecode = algo_execute_indirect_narrow_cap_box;
+	pso_desc.CS.BytecodeLength = sizeof(algo_execute_indirect_narrow_cap_box);
+	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_narrow_variants[4])));
+
+	pso_desc.CS.pShaderBytecode = algo_execute_indirect_narrow_box_box;
+	pso_desc.CS.BytecodeLength = sizeof(algo_execute_indirect_narrow_box_box);
+	DX_CHECK(sh->device->CreateComputePipelineState(&pso_desc, IID_PPV_ARGS(&s->pso_narrow_variants[5])));
+
 	D3D12_INDIRECT_ARGUMENT_DESC indirect_args[2] = {};
 	indirect_args[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT;
-	indirect_args[0].Constant.RootParameterIndex = 0; // Constants reside at root index 0
-	// Instruct the GPU to inject the first 2 uints directly into the pair_count and bin_index
-	// root constants, avoiding buffer lookups in the narrow phase shader
+	indirect_args[0].Constant.RootParameterIndex = 0;
 	indirect_args[0].Constant.DestOffsetIn32BitValues = 4;
 	indirect_args[0].Constant.Num32BitValuesToSet = 2;
 	indirect_args[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH;
 
 	D3D12_COMMAND_SIGNATURE_DESC cmd_desc = {};
-	cmd_desc.ByteStride = sizeof(dx_indirect_command); // Must be strictly 20 bytes
+	cmd_desc.ByteStride = sizeof(dx_indirect_command);
 	cmd_desc.NumArgumentDescs = 2;
 	cmd_desc.pArgumentDescs = indirect_args;
 	cmd_desc.NodeMask = 0;
@@ -196,7 +222,11 @@ extern "C" void dx_state_execute_indirect_destroy(dx_state_execute_indirect* s) 
 	if (s->pso_aabb_prep) s->pso_aabb_prep->Release();
 	if (s->pso_broad) s->pso_broad->Release();
 	if (s->pso_prep) s->pso_prep->Release();
-	if (s->pso_narrow) s->pso_narrow->Release();
+	
+	for (int i = 0; i < 6; ++i) {
+		if (s->pso_narrow_variants[i]) s->pso_narrow_variants[i]->Release();
+	}
+	
 	if (s->root_sig) s->root_sig->Release();
 	if (s->cmd_signature) s->cmd_signature->Release();
 	if (s->d_aabb_rigids) s->d_aabb_rigids->Release();
@@ -367,8 +397,6 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 	
 	dx_profile_step(&prof, sh, "query");
 
-	// Barrier to sync InterlockedAdds before reading them in the prep shader, and to transition
-	// the potential pairs list to SRV so the narrow phase can consume it
 	D3D12_GLOBAL_BARRIER gb_broad = {};
 	gb_broad.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 	gb_broad.SyncAfter = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
@@ -387,7 +415,6 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 	PIXEndEvent(sh->cmd_list);
 	dx_profile_step(&prof, sh, "disp_prep");
 
-	// Transition the indirect arguments buffer to the mandatory format for execution
 	D3D12_GLOBAL_BARRIER gb_indirect = {};
 	gb_indirect.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 	gb_indirect.SyncAfter = D3D12_BARRIER_SYNC_EXECUTE_INDIRECT;
@@ -398,18 +425,23 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 	sh->cmd_list->Barrier(1, &bg_indirect);
 
 	// --- Narrow Phase (Execute Indirect) ---
-	sh->cmd_list->SetPipelineState(state->pso_narrow);
-
-	// Rebind universe to ensure execution has correct SRVs since they might have decayed
 	bind_universal_context(sh->cmd_list, sh, state, static_count);
 
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(0, 255, 255), "Phase: Execute Indirect Narrow");
-	sh->cmd_list->ExecuteIndirect(state->cmd_signature, 6, state->d_indirect_args, 0, nullptr, 0);
+	
+	// We issue 6 explicit calls to ExecuteIndirect, updating the bound PSO for the specific shape
+	// pairing. A zero thread group count in the indirect arguments buffer natively behaves as a
+	// no-op entirely handled on the GPU timeline, avoiding CPU synchronization.
+	for (int b = 0; b < 6; ++b) {
+		sh->cmd_list->SetPipelineState(state->pso_narrow_variants[b]);
+		sh->cmd_list->ExecuteIndirect(state->cmd_signature, 1, state->d_indirect_args,
+									  b * sizeof(dx_indirect_command), nullptr, 0);
+	}
+	
 	PIXEndEvent(sh->cmd_list);
 
 	dx_profile_step(&prof, sh, "narrow");
 
-	// Synchronize everything that was heavily modified for readback
 	D3D12_GLOBAL_BARRIER gb_readback = {};
 	gb_readback.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
 	gb_readback.SyncAfter = D3D12_BARRIER_SYNC_COPY;
@@ -419,7 +451,6 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 	D3D12_BARRIER_GROUP bg_readback = {D3D12_BARRIER_TYPE_GLOBAL, 1, &gb_readback};
 	sh->cmd_list->Barrier(1, &bg_readback);
 
-	// Issue the diagnostic reads simultaneously with the physics reads
 	sh->cmd_list->CopyBufferRegion(state->rb_pair_count, 0, state->d_pair_count, 0, 6 * sizeof(uint32_t));
 	sh->cmd_list->CopyBufferRegion(sh->rb_col_count, 0, sh->d_col_count, 0, sizeof(uint32_t));
 
@@ -429,8 +460,18 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 	dx_profile_end(&prof, sh);
 
 	uint32_t pair_counts[6] = {0};
-	void* p_mapped = nullptr;
-	// ... (leave interim mapping code as is)
+	void* mapped = nullptr;
+	state->rb_pair_count->Map(0, nullptr, &mapped);
+	memcpy(pair_counts, mapped, 6 * sizeof(uint32_t));
+	state->rb_pair_count->Unmap(0, nullptr);
+
+	for (int b = 0; b < 6; ++b) {
+		if (pair_counts[b] > kernel_max) {
+			fprintf(stderr, "[dx12] WARNING: Bin %d exceeded capacity (%u > %u). Truncating...\n",
+					b, pair_counts[b], kernel_max);
+		}
+	}
+
 	count = shared_read_count(sh->rb_col_count);
 
 	dx_collision_compact* h_cols = nullptr;
