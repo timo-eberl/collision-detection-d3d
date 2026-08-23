@@ -22,6 +22,17 @@
 #define PROJECT_ROOT_DIR "."
 #endif
 
+// Define the grid configuration based on the scene bounds
+static const dx_grid_config grid_config = {
+	.res_x = 20,
+	.res_y = 20,
+	.res_z = 34,
+	.origin_x = -50.0f,
+	.origin_y = -50.0f,
+	.origin_z = -85.0f,
+	.cell_size = 5.0f
+};
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -75,18 +86,6 @@ struct recorded_frame {
 	dx_entity* statics;
 	dx_shape* shapes;
 	dx_collision_full* expected_cols;
-
-	uint32_t naive_col_count;
-	dx_collision_compact* naive_compact;
-
-	uint32_t binned_col_count;
-	dx_collision_compact* binned_compact;
-
-	uint32_t indirect_col_count;
-	dx_collision_compact* indirect_compact;
-
-	uint32_t wg_col_count;
-	dx_collision_compact* wg_compact;
 };
 
 int compare_collisions(const void* a, const void* b) {
@@ -95,14 +94,6 @@ int compare_collisions(const void* a, const void* b) {
 
 	if (ca->a_index != cb->a_index) return (int)ca->a_index - (int)cb->a_index;
 	if (ca->b_type != cb->b_type) return (int)ca->b_type - (int)cb->b_type;
-	return (int)ca->b_index - (int)cb->b_index;
-}
-
-int compare_compact_collisions(const void* a, const void* b) {
-	const dx_collision_compact* ca = (const dx_collision_compact*)a;
-	const dx_collision_compact* cb = (const dx_collision_compact*)b;
-
-	if (ca->a_index != cb->a_index) return (int)ca->a_index - (int)cb->a_index;
 	return (int)ca->b_index - (int)cb->b_index;
 }
 
@@ -287,15 +278,7 @@ bool verify_results(const char* algorithm_name,
 	return passed;
 }
 
-dx_collision_compact* deep_copy_compact(const dx_collision_compact* src, uint32_t count) {
-	if (count == 0 || !src) return nullptr;
-	dx_collision_compact* dst = (dx_collision_compact*)malloc(count * sizeof(dx_collision_compact));
-	if (dst) memcpy(dst, src, count * sizeof(dx_collision_compact));
-	return dst;
-}
-
 int main() {
-
 	// Fix emojis on some Windows terminals
 #ifdef _WIN32
 	SetConsoleOutputCP(CP_UTF8);
@@ -320,9 +303,9 @@ int main() {
 
 	uint32_t frame_index = 0;
 	uint32_t counts[4];
-	
+
 	std::vector<recorded_frame> recorded_frames;
-	uint32_t max_required_frame = WARMUP_FRAME_END > BENCHMARK_FRAME_END ? 
+	uint32_t max_required_frame = WARMUP_FRAME_END > BENCHMARK_FRAME_END ?
 								  WARMUP_FRAME_END : BENCHMARK_FRAME_END;
 
 	while (fread(counts, sizeof(uint32_t), 4, file) == 4) {
@@ -345,7 +328,7 @@ int main() {
 		}
 
 		bool is_warmup = (frame_index >= WARMUP_FRAME_START && frame_index <= WARMUP_FRAME_END);
-		bool is_benchmark = (frame_index >= BENCHMARK_FRAME_START && 
+		bool is_benchmark = (frame_index >= BENCHMARK_FRAME_START &&
 							 frame_index <= BENCHMARK_FRAME_END);
 
 		assert(WARMUP_FRAME_END < BENCHMARK_FRAME_START);
@@ -355,9 +338,9 @@ int main() {
 			free(statics);
 			free(shapes);
 			free(expected_cols);
-			
+
 			if (frame_index > max_required_frame) break;
-			
+
 			frame_index++;
 			continue;
 		}
@@ -370,49 +353,30 @@ int main() {
 				   BENCHMARK_FRAME_START, BENCHMARK_FRAME_END);
 		}
 
-		// Define the grid configuration based on the scene bounds + padding
-		dx_grid_config grid_config = {
-			.res_x = 20,
-			.res_y = 20,
-			.res_z = 34,
-			.origin_x = -50.0f,
-			.origin_y = -50.0f,
-			.origin_z = -85.0f,
-			.cell_size = 5.0f
-		};
-
 		dx_shared_state_set_profiling(sh, is_benchmark);
 
-		uint32_t naive_col_count = 0;
-		dx_collision_compact* naive_compact = nullptr;
 		if (ENABLE_ALGO_NAIVE) {
-			naive_compact = dx_run_simple_naive(sh, state_naive, &grid_config, rigids,
-												rigid_count, statics, static_count, shapes,
-												shape_count, true, &naive_col_count);
+			uint32_t dummy_cnt = 0;
+			dx_run_simple_naive(sh, state_naive, &grid_config, rigids, rigid_count,
+								statics, static_count, shapes, shape_count, true, &dummy_cnt);
 		}
 
-		uint32_t binned_col_count = 0;
-		dx_collision_compact* binned_compact = nullptr;
 		if (ENABLE_ALGO_BINNED) {
-			binned_compact = dx_run_simple_binned(sh, state_binned, &grid_config, rigids,
-												  rigid_count, statics, static_count, shapes,
-												  shape_count, true, &binned_col_count);
+			uint32_t dummy_cnt = 0;
+			dx_run_simple_binned(sh, state_binned, &grid_config, rigids, rigid_count,
+								 statics, static_count, shapes, shape_count, true, &dummy_cnt);
 		}
 
-		uint32_t indirect_col_count = 0;
-		dx_collision_compact* indirect_compact = nullptr;
 		if (ENABLE_ALGO_INDIRECT) {
-			indirect_compact = dx_run_execute_indirect(sh, state_indirect, &grid_config, rigids,
-													   rigid_count, statics, static_count, shapes,
-													   shape_count, true, &indirect_col_count);
+			uint32_t dummy_cnt = 0;
+			dx_run_execute_indirect(sh, state_indirect, &grid_config, rigids, rigid_count,
+									statics, static_count, shapes, shape_count, true, &dummy_cnt);
 		}
 
-		uint32_t wg_col_count = 0;
-		dx_collision_compact* wg_compact = nullptr;
 		if (ENABLE_ALGO_WORK_GRAPHS) {
-			wg_compact = dx_run_work_graphs(sh, state_work_graphs, &grid_config, rigids,
-											rigid_count, statics, static_count, shapes,
-											shape_count, true, &wg_col_count);
+			uint32_t dummy_cnt = 0;
+			dx_run_work_graphs(sh, state_work_graphs, &grid_config, rigids, rigid_count,
+							   statics, static_count, shapes, shape_count, true, &dummy_cnt);
 		}
 
 		if (is_benchmark && DEFERRED_VALIDATION) {
@@ -422,25 +386,13 @@ int main() {
 			rec.static_count = static_count;
 			rec.shape_count = shape_count;
 			rec.expected_col_count = expected_col_count;
-			
+
 			// Transfer ownership of the dynamically allocated arrays to the struct
 			rec.rigids = rigids;
 			rec.statics = statics;
 			rec.shapes = shapes;
 			rec.expected_cols = expected_cols;
-			
-			rec.naive_col_count = naive_col_count;
-			rec.naive_compact = deep_copy_compact(naive_compact, naive_col_count);
-			
-			rec.binned_col_count = binned_col_count;
-			rec.binned_compact = deep_copy_compact(binned_compact, binned_col_count);
-			
-			rec.indirect_col_count = indirect_col_count;
-			rec.indirect_compact = deep_copy_compact(indirect_compact, indirect_col_count);
-			
-			rec.wg_col_count = wg_col_count;
-			rec.wg_compact = deep_copy_compact(wg_compact, wg_col_count);
-			
+
 			recorded_frames.push_back(rec);
 		} else {
 			free(rigids);
@@ -455,46 +407,76 @@ int main() {
 	if (DEFERRED_VALIDATION && !recorded_frames.empty()) {
 		printf("\n--- Deferred Validation ---\n");
 
+		// Setup pristine state context for validation passes to avoid any side-effects
+		dx_shared_state* sh_val = dx_shared_state_create();
+		dx_shared_state_set_profiling(sh_val, false);
+
+		dx_state_simple_naive* state_naive_val = nullptr;
+		dx_state_simple_binned* state_binned_val = nullptr;
+		dx_state_execute_indirect* state_indirect_val = nullptr;
+		dx_state_work_graphs* state_work_graphs_val = nullptr;
+
+		if (ENABLE_ALGO_NAIVE) state_naive_val = dx_state_simple_naive_create(sh_val);
+		if (ENABLE_ALGO_BINNED) state_binned_val = dx_state_simple_binned_create(sh_val);
+		if (ENABLE_ALGO_INDIRECT) state_indirect_val = dx_state_execute_indirect_create(sh_val);
+		if (ENABLE_ALGO_WORK_GRAPHS) state_work_graphs_val = dx_state_work_graphs_create(sh_val);
+
 		for (size_t k = 0; k < recorded_frames.size(); ++k) {
 			recorded_frame& rec = recorded_frames[k];
-			
+
 			if (rec.expected_col_count > 0) {
-				qsort(rec.expected_cols, rec.expected_col_count, sizeof(dx_collision_full), 
+				qsort(rec.expected_cols, rec.expected_col_count, sizeof(dx_collision_full),
 					  compare_collisions);
 			}
 
 			bool passed_all = true;
 
 			if (ENABLE_ALGO_NAIVE) {
-				passed_all &= verify_results("Naive", rec.naive_compact, rec.naive_col_count,
-											 rec.expected_cols, rec.expected_col_count, rec.rigids,
-											 rec.rigid_count, rec.statics, rec.shapes,
-											 rec.frame_index);
+				uint32_t cnt = 0;
+				dx_collision_compact* cols = dx_run_simple_naive(
+					sh_val, state_naive_val, &grid_config, rec.rigids, rec.rigid_count,
+					rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
+
+				passed_all &= verify_results("Naive", cols, cnt, rec.expected_cols,
+											 rec.expected_col_count, rec.rigids, rec.rigid_count,
+											 rec.statics, rec.shapes, rec.frame_index);
 			}
 
 			if (ENABLE_ALGO_BINNED) {
-				passed_all &= verify_results("Binned", rec.binned_compact, rec.binned_col_count,
-											 rec.expected_cols, rec.expected_col_count, rec.rigids,
-											 rec.rigid_count, rec.statics, rec.shapes,
-											 rec.frame_index);
+				uint32_t cnt = 0;
+				dx_collision_compact* cols = dx_run_simple_binned(
+					sh_val, state_binned_val, &grid_config, rec.rigids, rec.rigid_count,
+					rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
+
+				passed_all &= verify_results("Binned", cols, cnt, rec.expected_cols,
+											 rec.expected_col_count, rec.rigids, rec.rigid_count,
+											 rec.statics, rec.shapes, rec.frame_index);
 			}
 
 			if (ENABLE_ALGO_INDIRECT) {
-				passed_all &= verify_results("Indirect", rec.indirect_compact,
-											 rec.indirect_col_count, rec.expected_cols,
+				uint32_t cnt = 0;
+				dx_collision_compact* cols = dx_run_execute_indirect(
+					sh_val, state_indirect_val, &grid_config, rec.rigids, rec.rigid_count,
+					rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
+
+				passed_all &= verify_results("Indirect", cols, cnt, rec.expected_cols,
 											 rec.expected_col_count, rec.rigids, rec.rigid_count,
 											 rec.statics, rec.shapes, rec.frame_index);
 			}
 
 			if (ENABLE_ALGO_WORK_GRAPHS) {
-				passed_all &= verify_results("Work Graphs", rec.wg_compact, rec.wg_col_count,
-											 rec.expected_cols, rec.expected_col_count, rec.rigids,
-											 rec.rigid_count, rec.statics, rec.shapes,
-											 rec.frame_index);
+				uint32_t cnt = 0;
+				dx_collision_compact* cols = dx_run_work_graphs(
+					sh_val, state_work_graphs_val, &grid_config, rec.rigids, rec.rigid_count,
+					rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
+
+				passed_all &= verify_results("Work Graphs", cols, cnt, rec.expected_cols,
+											 rec.expected_col_count, rec.rigids, rec.rigid_count,
+											 rec.statics, rec.shapes, rec.frame_index);
 			}
 
 			if (passed_all) {
-				printf("✅ Frame %u PASSED: %u collisions\n",
+				printf("✅ Frame %u PASSED: %u expected collisions\n",
 					   rec.frame_index, rec.expected_col_count);
 			}
 
@@ -502,12 +484,14 @@ int main() {
 			free(rec.statics);
 			free(rec.shapes);
 			free(rec.expected_cols);
-			free(rec.naive_compact);
-			free(rec.binned_compact);
-			free(rec.indirect_compact);
-			free(rec.wg_compact);
 		}
-		
+
+		dx_state_simple_naive_destroy(state_naive_val);
+		dx_state_simple_binned_destroy(state_binned_val);
+		dx_state_execute_indirect_destroy(state_indirect_val);
+		dx_state_work_graphs_destroy(state_work_graphs_val);
+		dx_shared_state_destroy(sh_val);
+
 		// Flush, so stdout and stderr messages are printed in order (OS dependent)
 		fflush(stdout);
 		fflush(stderr);
