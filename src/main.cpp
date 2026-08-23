@@ -290,6 +290,63 @@ int main() {
 		return 1;
 	}
 
+	assert(WARMUP_FRAME_END < BENCHMARK_FRAME_START);
+
+	uint32_t frame_index = 0;
+	uint32_t counts[4];
+
+	std::vector<recorded_frame> preloaded_frames;
+	uint32_t max_required_frame = WARMUP_FRAME_END > BENCHMARK_FRAME_END ?
+								  WARMUP_FRAME_END : BENCHMARK_FRAME_END;
+
+	// Preload from file to eliminate file I/O latency during GPU profiling.
+	// Load only the target frames.
+	while (fread(counts, sizeof(uint32_t), 4, file) == 4) {
+		uint32_t rigid_count = counts[0];
+		uint32_t static_count = counts[1];
+		uint32_t shape_count = counts[2];
+		uint32_t expected_col_count = counts[3];
+
+		bool is_target = (frame_index >= WARMUP_FRAME_START && frame_index <= WARMUP_FRAME_END) ||
+						 (frame_index >= BENCHMARK_FRAME_START &&
+						  frame_index <= BENCHMARK_FRAME_END);
+
+		if (!is_target) {
+			long skip_bytes = (long)(rigid_count * sizeof(dx_entity) +
+									 static_count * sizeof(dx_entity) +
+									 shape_count * sizeof(dx_shape) +
+									 expected_col_count * sizeof(dx_collision_full));
+			if (skip_bytes > 0) fseek(file, skip_bytes, SEEK_CUR);
+		} else {
+			recorded_frame rec = {};
+			rec.frame_index = frame_index;
+			rec.rigid_count = rigid_count;
+			rec.static_count = static_count;
+			rec.shape_count = shape_count;
+			rec.expected_col_count = expected_col_count;
+
+			rec.rigids = (dx_entity*)malloc(rigid_count * sizeof(dx_entity));
+			rec.statics = (dx_entity*)malloc(static_count * sizeof(dx_entity));
+			rec.shapes = (dx_shape*)malloc(shape_count * sizeof(dx_shape));
+			rec.expected_cols = (dx_collision_full*)malloc(
+				expected_col_count * sizeof(dx_collision_full));
+
+			if (rigid_count > 0) fread(rec.rigids, sizeof(dx_entity), rigid_count, file);
+			if (static_count > 0) fread(rec.statics, sizeof(dx_entity), static_count, file);
+			if (shape_count > 0) fread(rec.shapes, sizeof(dx_shape), shape_count, file);
+			if (expected_col_count > 0) {
+				fread(rec.expected_cols, sizeof(dx_collision_full), expected_col_count, file);
+			}
+
+			preloaded_frames.push_back(rec);
+		}
+
+		if (frame_index >= max_required_frame) break;
+		frame_index++;
+	}
+	fclose(file);
+
+	// Warmup and Benchmarking
 	dx_shared_state* sh = dx_shared_state_create();
 	dx_state_simple_naive* state_naive = nullptr;
 	dx_state_simple_binned* state_binned = nullptr;
@@ -301,54 +358,16 @@ int main() {
 	if (ENABLE_ALGO_INDIRECT) state_indirect = dx_state_execute_indirect_create(sh);
 	if (ENABLE_ALGO_WORK_GRAPHS) state_work_graphs = dx_state_work_graphs_create(sh);
 
-	uint32_t frame_index = 0;
-	uint32_t counts[4];
+	for (size_t i = 0; i < preloaded_frames.size(); ++i) {
+		recorded_frame& rec = preloaded_frames[i];
 
-	std::vector<recorded_frame> recorded_frames;
-	uint32_t max_required_frame = WARMUP_FRAME_END > BENCHMARK_FRAME_END ?
-								  WARMUP_FRAME_END : BENCHMARK_FRAME_END;
+		bool is_benchmark = (rec.frame_index >= BENCHMARK_FRAME_START &&
+							 rec.frame_index <= BENCHMARK_FRAME_END);
 
-	while (fread(counts, sizeof(uint32_t), 4, file) == 4) {
-		uint32_t rigid_count = counts[0];
-		uint32_t static_count = counts[1];
-		uint32_t shape_count = counts[2];
-		uint32_t expected_col_count = counts[3];
-
-		dx_entity* rigids = (dx_entity*)malloc(rigid_count * sizeof(dx_entity));
-		dx_entity* statics = (dx_entity*)malloc(static_count * sizeof(dx_entity));
-		dx_shape* shapes = (dx_shape*)malloc(shape_count * sizeof(dx_shape));
-		dx_collision_full* expected_cols = (dx_collision_full*)malloc(
-			expected_col_count * sizeof(dx_collision_full));
-
-		if (rigid_count > 0) fread(rigids, sizeof(dx_entity), rigid_count, file);
-		if (static_count > 0) fread(statics, sizeof(dx_entity), static_count, file);
-		if (shape_count > 0) fread(shapes, sizeof(dx_shape), shape_count, file);
-		if (expected_col_count > 0) {
-			fread(expected_cols, sizeof(dx_collision_full), expected_col_count, file);
-		}
-
-		bool is_warmup = (frame_index >= WARMUP_FRAME_START && frame_index <= WARMUP_FRAME_END);
-		bool is_benchmark = (frame_index >= BENCHMARK_FRAME_START &&
-							 frame_index <= BENCHMARK_FRAME_END);
-
-		assert(WARMUP_FRAME_END < BENCHMARK_FRAME_START);
-
-		if (!is_warmup && !is_benchmark) {
-			free(rigids);
-			free(statics);
-			free(shapes);
-			free(expected_cols);
-
-			if (frame_index > max_required_frame) break;
-
-			frame_index++;
-			continue;
-		}
-
-		if (frame_index == WARMUP_FRAME_START) {
+		if (rec.frame_index == WARMUP_FRAME_START) {
 			printf("Warmup (Frames %u - %u)...\n", WARMUP_FRAME_START, WARMUP_FRAME_END);
 		}
-		if (frame_index == BENCHMARK_FRAME_START) {
+		if (rec.frame_index == BENCHMARK_FRAME_START) {
 			printf("\n--- Benchmarking (Frames %u - %u) ---\n",
 				   BENCHMARK_FRAME_START, BENCHMARK_FRAME_END);
 		}
@@ -357,54 +376,41 @@ int main() {
 
 		if (ENABLE_ALGO_NAIVE) {
 			uint32_t dummy_cnt = 0;
-			dx_run_simple_naive(sh, state_naive, &grid_config, rigids, rigid_count,
-								statics, static_count, shapes, shape_count, true, &dummy_cnt);
+			dx_run_simple_naive(sh, state_naive, &grid_config, rec.rigids, rec.rigid_count,
+								rec.statics, rec.static_count, rec.shapes, rec.shape_count,
+								true, &dummy_cnt);
 		}
 
 		if (ENABLE_ALGO_BINNED) {
 			uint32_t dummy_cnt = 0;
-			dx_run_simple_binned(sh, state_binned, &grid_config, rigids, rigid_count,
-								 statics, static_count, shapes, shape_count, true, &dummy_cnt);
+			dx_run_simple_binned(sh, state_binned, &grid_config, rec.rigids, rec.rigid_count,
+								 rec.statics, rec.static_count, rec.shapes, rec.shape_count,
+								 true, &dummy_cnt);
 		}
 
 		if (ENABLE_ALGO_INDIRECT) {
 			uint32_t dummy_cnt = 0;
-			dx_run_execute_indirect(sh, state_indirect, &grid_config, rigids, rigid_count,
-									statics, static_count, shapes, shape_count, true, &dummy_cnt);
+			dx_run_execute_indirect(sh, state_indirect, &grid_config, rec.rigids, rec.rigid_count,
+									rec.statics, rec.static_count, rec.shapes, rec.shape_count,
+									true, &dummy_cnt);
 		}
 
 		if (ENABLE_ALGO_WORK_GRAPHS) {
 			uint32_t dummy_cnt = 0;
-			dx_run_work_graphs(sh, state_work_graphs, &grid_config, rigids, rigid_count,
-							   statics, static_count, shapes, shape_count, true, &dummy_cnt);
+			dx_run_work_graphs(sh, state_work_graphs, &grid_config, rec.rigids, rec.rigid_count,
+							   rec.statics, rec.static_count, rec.shapes, rec.shape_count,
+							   true, &dummy_cnt);
 		}
-
-		if (is_benchmark && DEFERRED_VALIDATION) {
-			recorded_frame rec = {};
-			rec.frame_index = frame_index;
-			rec.rigid_count = rigid_count;
-			rec.static_count = static_count;
-			rec.shape_count = shape_count;
-			rec.expected_col_count = expected_col_count;
-
-			// Transfer ownership of the dynamically allocated arrays to the struct
-			rec.rigids = rigids;
-			rec.statics = statics;
-			rec.shapes = shapes;
-			rec.expected_cols = expected_cols;
-
-			recorded_frames.push_back(rec);
-		} else {
-			free(rigids);
-			free(statics);
-			free(shapes);
-			free(expected_cols);
-		}
-
-		frame_index++;
 	}
 
-	if (DEFERRED_VALIDATION && !recorded_frames.empty()) {
+	dx_state_simple_naive_destroy(state_naive);
+	dx_state_simple_binned_destroy(state_binned);
+	dx_state_execute_indirect_destroy(state_indirect);
+	dx_state_work_graphs_destroy(state_work_graphs);
+	dx_shared_state_destroy(sh);
+
+	// Validation
+	if (DEFERRED_VALIDATION && !preloaded_frames.empty()) {
 		printf("\n--- Deferred Validation ---\n");
 
 		// Setup pristine state context for validation passes to avoid any side-effects
@@ -421,8 +427,8 @@ int main() {
 		if (ENABLE_ALGO_INDIRECT) state_indirect_val = dx_state_execute_indirect_create(sh_val);
 		if (ENABLE_ALGO_WORK_GRAPHS) state_work_graphs_val = dx_state_work_graphs_create(sh_val);
 
-		for (size_t k = 0; k < recorded_frames.size(); ++k) {
-			recorded_frame& rec = recorded_frames[k];
+		for (size_t k = 0; k < preloaded_frames.size(); ++k) {
+			recorded_frame& rec = preloaded_frames[k];
 
 			if (rec.expected_col_count > 0) {
 				qsort(rec.expected_cols, rec.expected_col_count, sizeof(dx_collision_full),
@@ -495,14 +501,15 @@ int main() {
 		// Flush, so stdout and stderr messages are printed in order (OS dependent)
 		fflush(stdout);
 		fflush(stderr);
+	} else {
+		for (size_t k = 0; k < preloaded_frames.size(); ++k) {
+			recorded_frame& rec = preloaded_frames[k];
+			free(rec.rigids);
+			free(rec.statics);
+			free(rec.shapes);
+			free(rec.expected_cols);
+		}
 	}
 
-	dx_state_simple_naive_destroy(state_naive);
-	dx_state_simple_binned_destroy(state_binned);
-	dx_state_execute_indirect_destroy(state_indirect);
-	dx_state_work_graphs_destroy(state_work_graphs);
-	dx_shared_state_destroy(sh);
-
-	fclose(file);
 	return 0;
 }
