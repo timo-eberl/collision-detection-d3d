@@ -23,14 +23,19 @@
 #endif
 
 // Define the grid configuration based on the scene bounds
+static constexpr int res_x = 62;
+static constexpr int res_y = 17;
+static constexpr int res_z = 29;
+static constexpr float cell_size = 5.0f;
+
 static const dx_grid_config grid_config = {
-	.res_x = 20,
-	.res_y = 20,
-	.res_z = 34,
-	.origin_x = -50.0f,
-	.origin_y = -50.0f,
-	.origin_z = -85.0f,
-	.cell_size = 5.0f
+	.res_x = res_x,
+	.res_y = res_y,
+	.res_z = res_z,
+	.origin_x = res_x * cell_size * -0.5f,
+	.origin_y = res_y * cell_size * -0.5f,
+	.origin_z = res_z * cell_size * -0.5f,
+	.cell_size = cell_size
 };
 
 #ifdef _WIN32
