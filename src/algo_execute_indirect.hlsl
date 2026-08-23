@@ -129,188 +129,38 @@ void cs_dispatch_prep(uint3 DTid : SV_DispatchThreadID) {
 	indirect_args_uav[b] = cmd;
 }
 
-void write_collision(dx_potential_pair p, float depth, float3 normal, float3 point_a,
-					 float3 point_b, bool swapped) {
-	if (swapped) {
-		normal = -normal;
-		float3 temp = point_a; point_a = point_b; point_b = temp;
-	}
-	uint idx;
-	InterlockedAdd(col_count_uav[0], 1, idx);
-	if (idx < max_collisions) {
-		dx_collision_compact comp;
-		comp.a_index = p.a_index;
-		comp.b_index = (p.b_type == 0) ? (p.b_index + rigid_count) : p.b_index;
-		comp.depth = depth;
-		comp.point_a = point_a;
-		comp.normal = encode_octahedral(normal);
-		collisions_uav[idx] = comp;
-	}
-}
-
 [numthreads(256, 1, 1)]
-void cs_narrow_sph_sph(uint3 DTid : SV_DispatchThreadID) {
+void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
 	uint i = DTid.x;
 	if (i >= pair_count) return;
 
 	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
 	dx_entity e_a = entities_srv[p.a_index];
 	dx_entity e_b;
+	
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
+
 	dx_shape s_a = shapes_srv[e_a.shape_index];
 	dx_shape s_b = shapes_srv[e_b.shape_index];
 
-	bool swapped = e_a.shape_type > e_b.shape_type;
-	float3 p_a = swapped ? e_b.position : e_a.position;
-	float3 p_b = swapped ? e_a.position : e_b.position;
-	float r_a = swapped ? s_b.data.x : s_a.data.x;
-	float r_b = swapped ? s_a.data.x : s_b.data.x;
-
-	float depth; float3 normal; float3 pt_a; float3 pt_b;
-	if (collision_test_sphere_sphere(p_a, r_a, p_b, r_b, depth, normal, pt_a, pt_b)) {
-		write_collision(p, depth, normal, pt_a, pt_b, swapped);
-	}
-}
-
-[numthreads(256, 1, 1)]
-void cs_narrow_sph_cap(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= pair_count) return;
-
-	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
-	dx_entity e_a = entities_srv[p.a_index];
-	dx_entity e_b;
-	if (p.b_type == 1) e_b = entities_srv[p.b_index];
-	else e_b = statics_srv[p.b_index];
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
-
-	bool swapped = e_a.shape_type > e_b.shape_type;
-	float3 p_sph = swapped ? e_b.position : e_a.position;
-	float r_sph = swapped ? s_b.data.x : s_a.data.x;
-	float3 p_cap = swapped ? e_a.position : e_b.position;
-	float4 rot_cap = swapped ? e_a.rotation : e_b.rotation;
-	float hh_cap = swapped ? s_a.data.x : s_b.data.x;
-	float r_cap = swapped ? s_a.data.y : s_b.data.y;
-
-	float depth; float3 normal; float3 pt_a; float3 pt_b;
-	if (collision_test_sphere_capsule(p_sph, r_sph, p_cap, rot_cap, hh_cap, r_cap,
-									  depth, normal, pt_a, pt_b)) {
-		write_collision(p, depth, normal, pt_a, pt_b, swapped);
-	}
-}
-
-[numthreads(256, 1, 1)]
-void cs_narrow_cap_cap(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= pair_count) return;
-
-	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
-	dx_entity e_a = entities_srv[p.a_index];
-	dx_entity e_b;
-	if (p.b_type == 1) e_b = entities_srv[p.b_index];
-	else e_b = statics_srv[p.b_index];
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
-
-	bool swapped = e_a.shape_type > e_b.shape_type;
-	float3 p_a = swapped ? e_b.position : e_a.position;
-	float4 rot_a = swapped ? e_b.rotation : e_a.rotation;
-	float hh_a = swapped ? s_b.data.x : s_a.data.x;
-	float r_a = swapped ? s_b.data.y : s_a.data.y;
-	float3 p_b = swapped ? e_a.position : e_b.position;
-	float4 rot_b = swapped ? e_a.rotation : e_b.rotation;
-	float hh_b = swapped ? s_a.data.x : s_b.data.x;
-	float r_b = swapped ? s_a.data.y : s_b.data.y;
-
-	float depth; float3 normal; float3 pt_a; float3 pt_b;
-	if (collision_test_capsule_capsule(p_a, rot_a, hh_a, r_a, p_b, rot_b, hh_b, r_b,
-									   depth, normal, pt_a, pt_b)) {
-		write_collision(p, depth, normal, pt_a, pt_b, swapped);
-	}
-}
-
-[numthreads(256, 1, 1)]
-void cs_narrow_sph_box(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= pair_count) return;
-
-	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
-	dx_entity e_a = entities_srv[p.a_index];
-	dx_entity e_b;
-	if (p.b_type == 1) e_b = entities_srv[p.b_index];
-	else e_b = statics_srv[p.b_index];
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
-
-	bool swapped = e_a.shape_type > e_b.shape_type;
-	float3 p_sph = swapped ? e_b.position : e_a.position;
-	float r_sph = swapped ? s_b.data.x : s_a.data.x;
-	float3 p_box = swapped ? e_a.position : e_b.position;
-	float4 rot_box = swapped ? e_a.rotation : e_b.rotation;
-	float3 ext_box = swapped ? s_a.data.xyz : s_b.data.xyz;
-
-	float depth; float3 normal; float3 pt_a; float3 pt_b;
-	if (collision_test_sphere_obb(p_sph, r_sph, p_box, rot_box, ext_box,
-								  depth, normal, pt_a, pt_b)) {
-		write_collision(p, depth, normal, pt_a, pt_b, swapped);
-	}
-}
-
-[numthreads(256, 1, 1)]
-void cs_narrow_cap_box(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= pair_count) return;
-
-	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
-	dx_entity e_a = entities_srv[p.a_index];
-	dx_entity e_b;
-	if (p.b_type == 1) e_b = entities_srv[p.b_index];
-	else e_b = statics_srv[p.b_index];
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
-
-	bool swapped = e_a.shape_type > e_b.shape_type;
-	float3 p_cap = swapped ? e_b.position : e_a.position;
-	float4 rot_cap = swapped ? e_b.rotation : e_a.rotation;
-	float hh_cap = swapped ? s_b.data.x : s_a.data.x;
-	float r_cap = swapped ? s_b.data.y : s_a.data.y;
-	float3 p_box = swapped ? e_a.position : e_b.position;
-	float4 rot_box = swapped ? e_a.rotation : e_b.rotation;
-	float3 ext_box = swapped ? s_a.data.xyz : s_b.data.xyz;
-
-	float depth; float3 normal; float3 pt_a; float3 pt_b;
-	if (collision_test_capsule_obb(p_cap, rot_cap, hh_cap, r_cap, p_box, rot_box, ext_box,
-								   depth, normal, pt_a, pt_b)) {
-		write_collision(p, depth, normal, pt_a, pt_b, swapped);
-	}
-}
-
-[numthreads(256, 1, 1)]
-void cs_narrow_box_box(uint3 DTid : SV_DispatchThreadID) {
-	uint i = DTid.x;
-	if (i >= pair_count) return;
-
-	dx_potential_pair p = potential_pairs_srv[bin_index * max_collisions + i];
-	dx_entity e_a = entities_srv[p.a_index];
-	dx_entity e_b;
-	if (p.b_type == 1) e_b = entities_srv[p.b_index];
-	else e_b = statics_srv[p.b_index];
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
-
-	bool swapped = e_a.shape_type > e_b.shape_type;
-	float3 p_a = swapped ? e_b.position : e_a.position;
-	float4 rot_a = swapped ? e_b.rotation : e_a.rotation;
-	float3 ext_a = swapped ? s_b.data.xyz : s_a.data.xyz;
-	float3 p_b = swapped ? e_a.position : e_b.position;
-	float4 rot_b = swapped ? e_a.rotation : e_b.rotation;
-	float3 ext_b = swapped ? s_a.data.xyz : s_b.data.xyz;
-
-	float depth; float3 normal; float3 pt_a; float3 pt_b;
-	if (collision_test_obb_obb(p_a, rot_a, ext_a, p_b, rot_b, ext_b,
-							   depth, normal, pt_a, pt_b)) {
-		write_collision(p, depth, normal, pt_a, pt_b, swapped);
+	float depth; 
+	float3 normal; 
+	float3 point_a; 
+	float3 point_b;
+	
+	if (evaluate_narrow_phase(e_a, s_a, e_b, s_b, depth, normal, point_a, point_b)) {
+		uint idx;
+		InterlockedAdd(col_count_uav[0], 1, idx);
+		
+		if (idx < max_collisions) {
+			dx_collision_compact comp;
+			comp.a_index = p.a_index;
+			comp.b_index = (p.b_type == 0) ? (p.b_index + rigid_count) : p.b_index;
+			comp.depth = depth;
+			comp.point_a = point_a;
+			comp.normal = encode_octahedral(normal);
+			collisions_uav[idx] = comp;
+		}
 	}
 }
