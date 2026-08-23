@@ -61,6 +61,10 @@ endif()
 
 message(STATUS "Using DXC: ${DXC_EXECUTABLE}")
 
+set(DXC_FLAGS -O3)
+# For shader debugging
+# set(DXC_FLAGS -O3 -Zi)
+
 # Compile shader (broad_phase_grid_a builder)
 add_custom_command(
 	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/grid_a_load_shader.h
@@ -70,27 +74,27 @@ add_custom_command(
 		   ${CMAKE_CURRENT_BINARY_DIR}/grid_a_bounds_shader.h
 		   ${CMAKE_CURRENT_BINARY_DIR}/grid_a_clear_shader.h
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_load_key_value -T cs_6_8 -O3 -Vn grid_a_load_shader
+		-E cs_load_key_value -T cs_6_8 ${DXC_FLAGS} -Vn grid_a_load_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_load_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_permute_aabbs -T cs_6_8 -O3 -Vn grid_a_permute_shader
+		-E cs_permute_aabbs -T cs_6_8 ${DXC_FLAGS} -Vn grid_a_permute_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_permute_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_count_cells -T cs_6_8 -O3 -Vn grid_a_count_shader
+		-E cs_count_cells -T cs_6_8 ${DXC_FLAGS} -Vn grid_a_count_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_count_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_assign -T cs_6_8 -O3 -Vn grid_a_assign_shader
+		-E cs_assign -T cs_6_8 ${DXC_FLAGS} -Vn grid_a_assign_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_assign_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_find_boundaries -T cs_6_8 -O3 -Vn grid_a_bounds_shader
+		-E cs_find_boundaries -T cs_6_8 ${DXC_FLAGS} -Vn grid_a_bounds_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_bounds_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_clear_cells -T cs_6_8 -O3 -Vn grid_a_clear_shader
+		-E cs_clear_cells -T cs_6_8 ${DXC_FLAGS} -Vn grid_a_clear_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/grid_a_clear_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
 	DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/broad_phase_grid_a.hlsl
@@ -103,17 +107,17 @@ add_custom_command(
 		   ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_broad_shader.h
 		   ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_narrow_shader.h
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_aabb_prep -T cs_6_8 -O3
+		-E cs_aabb_prep -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_simple_naive_aabb_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_aabb_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_naive.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_broad_phase -T cs_6_8 -O3
+		-E cs_broad_phase -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_simple_naive_broad_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_broad_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_naive.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_narrow_phase -T cs_6_8 -O3
+		-E cs_narrow_phase -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_simple_naive_narrow_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_naive_narrow_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_naive.hlsl
@@ -127,17 +131,17 @@ add_custom_command(
 		   ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_broad_shader.h
 		   ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_narrow_shader.h
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_aabb_prep -T cs_6_8 -O3
+		-E cs_aabb_prep -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_simple_binned_aabb_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_aabb_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_binned.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_broad_phase -T cs_6_8 -O3
+		-E cs_broad_phase -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_simple_binned_broad_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_broad_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_binned.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_narrow_phase -T cs_6_8 -O3
+		-E cs_narrow_phase -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_simple_binned_narrow_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_simple_binned_narrow_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_simple_binned.hlsl
@@ -152,22 +156,22 @@ add_custom_command(
 		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_shader.h
 		   ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_prep_shader.h
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_aabb_prep -T cs_6_8 -O3
+		-E cs_aabb_prep -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_execute_indirect_aabb_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_aabb_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_broad_phase -T cs_6_8 -O3
+		-E cs_broad_phase -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_execute_indirect_broad_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_broad_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_narrow_phase -T cs_6_8 -O3
+		-E cs_narrow_phase -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_execute_indirect_narrow_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_narrow_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_dispatch_prep -T cs_6_8 -O3
+		-E cs_dispatch_prep -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_execute_indirect_prep_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_execute_indirect_prep_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_execute_indirect.hlsl
@@ -182,22 +186,22 @@ add_custom_command(
 		   ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_aabb_shader.h
 		   ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_broad_shader.h
 	COMMAND ${DXC_EXECUTABLE}
-		-T lib_6_8 -O3
+		-T lib_6_8 ${DXC_FLAGS}
 		-Vn algo_work_graphs_lib_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_lib_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_work_graphs.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_init_graph -T cs_6_8 -O3
+		-E cs_init_graph -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_work_graphs_init_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_init_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_work_graphs.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_aabb_prep -T cs_6_8 -O3
+		-E cs_aabb_prep -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_work_graphs_aabb_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_aabb_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_work_graphs.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E cs_broad_phase -T cs_6_8 -O3
+		-E cs_broad_phase -T cs_6_8 ${DXC_FLAGS}
 		-Vn algo_work_graphs_broad_shader
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/algo_work_graphs_broad_shader.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/algo_work_graphs.hlsl
@@ -211,17 +215,17 @@ add_custom_command(
 		   ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_exc.h
 		   ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_inc_max.h
 	COMMAND ${DXC_EXECUTABLE}
-		-E InitChainedScan -T cs_6_8 -O3 -Wno-conversion
+		-E InitChainedScan -T cs_6_8 ${DXC_FLAGS} -Wno-conversion
 		-Vn prefix_sum_init
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_init.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/prefix_sum/prefix_sum.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E ChainedScanDecoupledLookback -T cs_6_8 -O3 -Wno-conversion
+		-E ChainedScanDecoupledLookback -T cs_6_8 ${DXC_FLAGS} -Wno-conversion
 		-Vn prefix_sum_exc
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_exc.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/prefix_sum/prefix_sum.hlsl
 	COMMAND ${DXC_EXECUTABLE}
-		-E ChainedScanDecoupledLookback -T cs_6_8 -O3 -Wno-conversion -DOP_MAX
+		-E ChainedScanDecoupledLookback -T cs_6_8 ${DXC_FLAGS} -Wno-conversion -DOP_MAX
 		-Vn prefix_sum_inc_max
 		-Fh ${CMAKE_CURRENT_BINARY_DIR}/prefix_sum_inc_max.h
 		${CMAKE_CURRENT_SOURCE_DIR}/src/prefix_sum/prefix_sum.hlsl
@@ -230,7 +234,7 @@ add_custom_command(
 
 # Compile shader (radix_sort)
 set(RS_BASE_FLAGS -DKEY_UINT -DPAYLOAD_UINT -DSORT_PAIRS -DSHOULD_ASCEND -DENABLE_16_BIT)
-set(RS_DXC_CMD ${DXC_EXECUTABLE} -T cs_6_8 -O3 -enable-16bit-types -Wno-conversion)
+set(RS_DXC_CMD ${DXC_EXECUTABLE} -T cs_6_8 ${DXC_FLAGS} -enable-16bit-types -Wno-conversion)
 
 # Radix Sort: NVIDIA Profile
 set(RS_NV_FLAGS ${RS_BASE_FLAGS} -DKEYS_PER_THREAD_15 -DPART_SIZE_7680)
