@@ -167,3 +167,80 @@ RX 9070 XT:
 [dx12] work_graphs (avg over 10)
     GPU: aabb_prep=0.030ms [0.030-0.031] build=0.326ms [0.297-0.358] query=0.410ms [0.394-0.429] work_graph=0.371ms [0.356-0.382] total=1.138ms [1.100ms-1.176ms]
     CPU: upload=1.035ms work=1.288ms download=1.777ms
+
+> Previous benchmarks use 100.000 objects and a container of 75x75x75
+> Following benchmarks use 300.000 objects and a container of 300x75x75, resulting in the following amount of collisions:
+> - Frame 160: 610731
+> - Frame 161: 619437
+> - Frame 162: 627299
+> - Frame 163: 631637
+> - Frame 164: 634208
+> - Frame 165: 635344
+> - Frame 166: 633324
+> - Frame 167: 630826
+> - Frame 168: 626098
+> - Frame 169: 619037
+
+## 415ff626e90ac8b6b1402009fb00cdd4c9334343
+
+RX 9070 XT:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.042] build=0.422ms [0.385-0.488] query=0.629ms [0.606-0.650] gap_narrow=0.121ms [0.107-0.160] narrow=0.294ms [0.287-0.300] total=1.502ms [1.473ms-1.567ms]
+    CPU: upload=2.829ms work=1.648ms download=3.835ms
+[dx12] simple_binned (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.036] build=0.407ms [0.388-0.441] query=0.664ms [0.637-0.760] gap_narrow=0.117ms [0.103-0.135] narrow=0.187ms [0.181-0.203] total=1.410ms [1.360ms-1.575ms]
+    CPU: upload=2.823ms work=1.551ms download=3.841ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.035ms [0.035-0.037] build=0.413ms [0.394-0.454] query=0.665ms [0.638-0.765] disp_prep=0.024ms [0.023-0.027] narrow=0.189ms [0.182-0.205] total=1.327ms [1.286ms-1.488ms]
+    CPU: upload=2.758ms work=1.485ms download=3.846ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.037] build=0.451ms [0.391-0.860] query=0.644ms [0.608-0.737] work_graph=0.686ms [0.658-0.758] total=1.816ms [1.732ms-2.191ms]
+    CPU: upload=2.768ms work=1.967ms download=3.857ms
+
+## 7543de3321fd54197bff7ee5cd2c83a58f66c700 (split execute indirect into 6 shaders)
+
+RX 9070 XT:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.035] build=0.421ms [0.408-0.455] query=0.633ms [0.612-0.652] gap_narrow=0.116ms [0.106-0.139] narrow=0.294ms [0.286-0.299] total=1.500ms [1.458ms-1.568ms]
+    CPU: upload=2.822ms work=1.645ms download=3.847ms
+[dx12] simple_binned (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.036] build=0.435ms [0.389-0.660] query=0.665ms [0.632-0.770] gap_narrow=0.120ms [0.107-0.142] narrow=0.187ms [0.180-0.203] total=1.442ms [1.371ms-1.804ms]
+    CPU: upload=2.815ms work=1.586ms download=3.838ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.037] build=0.409ms [0.393-0.467] query=0.666ms [0.636-0.767] disp_prep=0.024ms [0.023-0.026] narrow=0.185ms [0.178-0.200] total=1.318ms [1.274ms-1.497ms]
+    CPU: upload=2.773ms work=1.484ms download=4.195ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.038] build=0.406ms [0.386-0.448] query=0.642ms [0.608-0.751] work_graph=0.687ms [0.652-0.774] total=1.771ms [1.686ms-1.998ms]
+    CPU: upload=2.791ms work=1.947ms download=3.890ms
+
+## 05d1ccbc1bd28b869a7490058513df11c7b10863 (flatten functions to optimize register usage)
+
+RX 9070 XT:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.037] build=0.418ms [0.387-0.449] query=0.629ms [0.608-0.657] gap_narrow=0.132ms [0.105-0.172] narrow=0.296ms [0.289-0.300] total=1.510ms [1.444ms-1.562ms]
+    CPU: upload=2.852ms work=1.669ms download=3.858ms
+[dx12] simple_binned (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.036] build=0.404ms [0.384-0.436] query=0.662ms [0.622-0.743] gap_narrow=0.115ms [0.102-0.155] narrow=0.176ms [0.170-0.189] total=1.392ms [1.343ms-1.532ms]
+    CPU: upload=2.857ms work=1.541ms download=3.846ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.037] build=0.418ms [0.396-0.462] query=0.662ms [0.630-0.759] disp_prep=0.024ms [0.023-0.026] narrow=0.182ms [0.175-0.196] total=1.321ms [1.259ms-1.460ms]
+    CPU: upload=2.801ms work=1.484ms download=4.315ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.038] build=0.406ms [0.385-0.478] query=0.640ms [0.609-0.740] work_graph=0.685ms [0.661-0.754] total=1.767ms [1.693ms-2.009ms]
+    CPU: upload=2.830ms work=1.921ms download=3.889ms
+
+## fff0db20954946448a277136eb314e759faaa7bb (undo split of execute indirect into 6 shaders)
+
+RX 9070 XT:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.034ms [0.034-0.035] build=0.417ms [0.390-0.464] query=0.633ms [0.617-0.651] gap_narrow=0.128ms [0.104-0.158] narrow=0.296ms [0.289-0.300] total=1.509ms [1.459ms-1.591ms]
+    CPU: upload=2.848ms work=1.663ms download=3.866ms
+[dx12] simple_binned (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.036] build=0.418ms [0.383-0.454] query=0.664ms [0.640-0.732] gap_narrow=0.122ms [0.105-0.148] narrow=0.176ms [0.171-0.187] total=1.414ms [1.376ms-1.521ms]
+    CPU: upload=2.846ms work=1.569ms download=3.864ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.035ms [0.035-0.038] build=0.418ms [0.392-0.457] query=0.662ms [0.630-0.770] disp_prep=0.024ms [0.023-0.026] narrow=0.178ms [0.171-0.193] total=1.317ms [1.275ms-1.484ms]
+    CPU: upload=2.800ms work=1.477ms download=3.882ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.037] build=0.404ms [0.387-0.436] query=0.639ms [0.611-0.740] work_graph=0.686ms [0.657-0.756] total=1.765ms [1.694ms-1.969ms]
+    CPU: upload=2.788ms work=1.920ms download=3.868ms
