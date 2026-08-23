@@ -127,31 +127,37 @@ void RoutePairs(
 		uint temp = type_a; type_a = type_b; type_b = temp;
 	}
 
-	if (type_a == 0 && type_b == 0) {
-		ThreadNodeOutputRecords<dx_potential_pair> r = out_sph_sph.GetThreadNodeOutputRecords(1);
-		r.Get() = p;
-		r.OutputComplete();
-	} else if (type_a == 0 && type_b == 1) {
-		ThreadNodeOutputRecords<dx_potential_pair> r = out_sph_cap.GetThreadNodeOutputRecords(1);
-		r.Get() = p;
-		r.OutputComplete();
-	} else if (type_a == 0 && type_b == 2) {
-		ThreadNodeOutputRecords<dx_potential_pair> r = out_sph_box.GetThreadNodeOutputRecords(1);
-		r.Get() = p;
-		r.OutputComplete();
-	} else if (type_a == 1 && type_b == 1) {
-		ThreadNodeOutputRecords<dx_potential_pair> r = out_cap_cap.GetThreadNodeOutputRecords(1);
-		r.Get() = p;
-		r.OutputComplete();
-	} else if (type_a == 1 && type_b == 2) {
-		ThreadNodeOutputRecords<dx_potential_pair> r = out_cap_box.GetThreadNodeOutputRecords(1);
-		r.Get() = p;
-		r.OutputComplete();
-	} else if (type_a == 2 && type_b == 2) {
-		ThreadNodeOutputRecords<dx_potential_pair> r = out_box_box.GetThreadNodeOutputRecords(1);
-		r.Get() = p;
-		r.OutputComplete();
-	}
+	int hit_type = 0;
+	if (type_a == 0 && type_b == 0) hit_type = 0;
+	else if (type_a == 0 && type_b == 1) hit_type = 1;
+	else if (type_a == 0 && type_b == 2) hit_type = 2;
+	else if (type_a == 1 && type_b == 1) hit_type = 3;
+	else if (type_a == 1 && type_b == 2) hit_type = 4;
+	else if (type_a == 2 && type_b == 2) hit_type = 5;
+
+	ThreadNodeOutputRecords<dx_potential_pair> r0 = out_sph_sph.GetThreadNodeOutputRecords(hit_type == 0 ? 1 : 0);
+	if (hit_type == 0) r0.Get() = p;
+	r0.OutputComplete();
+
+	ThreadNodeOutputRecords<dx_potential_pair> r1 = out_sph_cap.GetThreadNodeOutputRecords(hit_type == 1 ? 1 : 0);
+	if (hit_type == 1) r1.Get() = p;
+	r1.OutputComplete();
+
+	ThreadNodeOutputRecords<dx_potential_pair> r2 = out_sph_box.GetThreadNodeOutputRecords(hit_type == 2 ? 1 : 0);
+	if (hit_type == 2) r2.Get() = p;
+	r2.OutputComplete();
+
+	ThreadNodeOutputRecords<dx_potential_pair> r3 = out_cap_cap.GetThreadNodeOutputRecords(hit_type == 3 ? 1 : 0);
+	if (hit_type == 3) r3.Get() = p;
+	r3.OutputComplete();
+
+	ThreadNodeOutputRecords<dx_potential_pair> r4 = out_cap_box.GetThreadNodeOutputRecords(hit_type == 4 ? 1 : 0);
+	if (hit_type == 4) r4.Get() = p;
+	r4.OutputComplete();
+
+	ThreadNodeOutputRecords<dx_potential_pair> r5 = out_box_box.GetThreadNodeOutputRecords(hit_type == 5 ? 1 : 0);
+	if (hit_type == 5) r5.Get() = p;
+	r5.OutputComplete();
 }
 
 void write_collision(dx_potential_pair p, float depth, float3 normal, float3 point_a,
