@@ -8,9 +8,8 @@ Implement a broad phase and narrow phase on GPU. We'll support spheres, capsules
 
 Compare the performance of multiple versions:
 - Simple Naive:    Broad phase -> Potential pairs list -> Narrow phase (uber shader)
-- Simple Binned:   Broad phase -> Potential binned pairs list -> Dispatch Narrow Phase (same uber shader) multiple times
-- ExecuteIndirect: Broad phase -> Potential binned pairs list -> ExecuteIndirect different narrow phase shaders
-- Work Graphs:     Broad phase -> Launch different narrow phase shaders
+- ExecuteIndirect: Broad phase -> Potential binned pairs list -> ExecuteIndirect Narrow phase (~~individual shaders~~ uber shader)
+- Work Graphs:     Broad phase -> ExecuteIndirect Narrow phase (individual shaders)
 
 ## Instructions
 

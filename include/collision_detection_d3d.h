@@ -37,7 +37,6 @@ typedef struct {
 typedef struct dx_shared_state dx_shared_state;
 // Opaque state structs for each algorithm
 typedef struct dx_state_simple_naive dx_state_simple_naive;
-typedef struct dx_state_simple_binned dx_state_simple_binned;
 typedef struct dx_state_execute_indirect dx_state_execute_indirect;
 typedef struct dx_state_work_graphs dx_state_work_graphs;
 
@@ -60,18 +59,6 @@ dx_collision_compact* dx_run_simple_naive(dx_shared_state* shared_state,
 										  const dx_entity* static_entities, uint32_t static_count,
 										  const dx_shape* shapes, uint32_t shape_count,
 										  bool statics_changed, uint32_t* out_count);
-
-dx_state_simple_binned* dx_state_simple_binned_create(dx_shared_state* shared_state);
-void dx_state_simple_binned_destroy(dx_state_simple_binned* state);
-
-// The returned array is managed internally by the state object and must not be freed.
-dx_collision_compact* dx_run_simple_binned(dx_shared_state* shared_state,
-										   dx_state_simple_binned* state,
-										   const dx_grid_config* config,
-										   const dx_entity* rigid_entities, uint32_t rigid_count,
-										   const dx_entity* static_entities, uint32_t static_count,
-										   const dx_shape* shapes, uint32_t shape_count,
-										   bool statics_changed, uint32_t* out_count);
 
 dx_state_execute_indirect* dx_state_execute_indirect_create(dx_shared_state* shared_state);
 void dx_state_execute_indirect_destroy(dx_state_execute_indirect* state);

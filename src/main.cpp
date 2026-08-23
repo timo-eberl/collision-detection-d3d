@@ -14,7 +14,6 @@
 #define BENCHMARK_FRAME_END 169
 
 #define ENABLE_ALGO_NAIVE 1
-#define ENABLE_ALGO_BINNED 1
 #define ENABLE_ALGO_INDIRECT 1
 #define ENABLE_ALGO_WORK_GRAPHS 1
 
@@ -354,12 +353,10 @@ int main() {
 	// Warmup and Benchmarking
 	dx_shared_state* sh = dx_shared_state_create();
 	dx_state_simple_naive* state_naive = nullptr;
-	dx_state_simple_binned* state_binned = nullptr;
 	dx_state_execute_indirect* state_indirect = nullptr;
 	dx_state_work_graphs* state_work_graphs = nullptr;
 
 	if (ENABLE_ALGO_NAIVE) state_naive = dx_state_simple_naive_create(sh);
-	if (ENABLE_ALGO_BINNED) state_binned = dx_state_simple_binned_create(sh);
 	if (ENABLE_ALGO_INDIRECT) state_indirect = dx_state_execute_indirect_create(sh);
 	if (ENABLE_ALGO_WORK_GRAPHS) state_work_graphs = dx_state_work_graphs_create(sh);
 
@@ -386,13 +383,6 @@ int main() {
 								true, &dummy_cnt);
 		}
 
-		if (ENABLE_ALGO_BINNED) {
-			uint32_t dummy_cnt = 0;
-			dx_run_simple_binned(sh, state_binned, &grid_config, rec.rigids, rec.rigid_count,
-								 rec.statics, rec.static_count, rec.shapes, rec.shape_count,
-								 true, &dummy_cnt);
-		}
-
 		if (ENABLE_ALGO_INDIRECT) {
 			uint32_t dummy_cnt = 0;
 			dx_run_execute_indirect(sh, state_indirect, &grid_config, rec.rigids, rec.rigid_count,
@@ -409,7 +399,6 @@ int main() {
 	}
 
 	dx_state_simple_naive_destroy(state_naive);
-	dx_state_simple_binned_destroy(state_binned);
 	dx_state_execute_indirect_destroy(state_indirect);
 	dx_state_work_graphs_destroy(state_work_graphs);
 	dx_shared_state_destroy(sh);
@@ -423,12 +412,10 @@ int main() {
 		dx_shared_state_set_profiling(sh_val, false);
 
 		dx_state_simple_naive* state_naive_val = nullptr;
-		dx_state_simple_binned* state_binned_val = nullptr;
 		dx_state_execute_indirect* state_indirect_val = nullptr;
 		dx_state_work_graphs* state_work_graphs_val = nullptr;
 
 		if (ENABLE_ALGO_NAIVE) state_naive_val = dx_state_simple_naive_create(sh_val);
-		if (ENABLE_ALGO_BINNED) state_binned_val = dx_state_simple_binned_create(sh_val);
 		if (ENABLE_ALGO_INDIRECT) state_indirect_val = dx_state_execute_indirect_create(sh_val);
 		if (ENABLE_ALGO_WORK_GRAPHS) state_work_graphs_val = dx_state_work_graphs_create(sh_val);
 
@@ -449,17 +436,6 @@ int main() {
 					rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
 
 				passed_all &= verify_results("Naive", cols, cnt, rec.expected_cols,
-											 rec.expected_col_count, rec.rigids, rec.rigid_count,
-											 rec.statics, rec.shapes, rec.frame_index);
-			}
-
-			if (ENABLE_ALGO_BINNED) {
-				uint32_t cnt = 0;
-				dx_collision_compact* cols = dx_run_simple_binned(
-					sh_val, state_binned_val, &grid_config, rec.rigids, rec.rigid_count,
-					rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
-
-				passed_all &= verify_results("Binned", cols, cnt, rec.expected_cols,
 											 rec.expected_col_count, rec.rigids, rec.rigid_count,
 											 rec.statics, rec.shapes, rec.frame_index);
 			}
@@ -498,7 +474,6 @@ int main() {
 		}
 
 		dx_state_simple_naive_destroy(state_naive_val);
-		dx_state_simple_binned_destroy(state_binned_val);
 		dx_state_execute_indirect_destroy(state_indirect_val);
 		dx_state_work_graphs_destroy(state_work_graphs_val);
 		dx_shared_state_destroy(sh_val);
