@@ -103,29 +103,26 @@ void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
 	if (i >= pair_count) return;
 
 	dx_potential_pair p = potential_pairs_srv[i];
-	
+
 	dx_entity e_a = entities_srv[p.a_index];
 	dx_entity e_b;
-	if (p.b_type == 1) {
-		e_b = entities_srv[p.b_index];
-	} else {
-		e_b = statics_srv[p.b_index];
-	}
+	if (p.b_type == 1) e_b = entities_srv[p.b_index];
+	else e_b = statics_srv[p.b_index];
 
 	dx_shape s_a = shapes_srv[e_a.shape_index];
 	dx_shape s_b = shapes_srv[e_b.shape_index];
 
-	dx_collision_full c;
-	if (evaluate_narrow_phase(e_a, s_a, e_b, s_b, c)) {
+	float depth; float3 normal; float3 point_a; float3 point_b;
+	if (evaluate_narrow_phase(e_a, s_a, e_b, s_b, depth, normal, point_a, point_b)) {
 		uint idx;
 		InterlockedAdd(col_count_uav[0], 1, idx);
 		if (idx < max_collisions) {
 			dx_collision_compact comp;
 			comp.a_index = p.a_index;
 			comp.b_index = (p.b_type == 0) ? (p.b_index + rigid_count) : p.b_index;
-			comp.depth = c.depth;
-			comp.point_a = c.point_a;
-			comp.normal = encode_octahedral(c.normal);
+			comp.depth = depth;
+			comp.point_a = point_a;
+			comp.normal = encode_octahedral(normal);
 			collisions_uav[idx] = comp;
 		}
 	}
