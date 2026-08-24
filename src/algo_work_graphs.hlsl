@@ -49,15 +49,17 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 	if (i >= item_count) return;
 
 	dx_entity e = entities_srv[i];
-	dx_shape s = shapes_srv[e.shape_index];
+	uint shape_type = e.shape_info >> 30;
+	uint shape_index = e.shape_info & 0x3FFFFFFF;
+	dx_shape s = shapes_srv[shape_index];
 
 	packed_aabb box = (packed_aabb)0;
-	if (e.shape_type == 0) {
+	if (shape_type == 0) {
 		float radius = s.data.x;
 		box.min_x = e.position.x - radius; box.max_x = e.position.x + radius;
 		box.min_y = e.position.y - radius; box.max_y = e.position.y + radius;
 		box.min_z = e.position.z - radius; box.max_z = e.position.z + radius;
-	} else if (e.shape_type == 1) {
+	} else if (shape_type == 1) {
 		float half_height = s.data.x;
 		float radius = s.data.y;
 		float3 up = rotate_vector(float3(0.0f, 1.0f, 0.0f), e.rotation);
@@ -78,7 +80,7 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 		box.min_y = e.position.y - half_size.y; box.max_y = e.position.y + half_size.y;
 		box.min_z = e.position.z - half_size.z; box.max_z = e.position.z + half_size.z;
 	}
-	box.shape_type = e.shape_type;
+	box.shape_type = shape_type;
 	box.pad = 0;
 	aabb_uav[i] = box;
 }
@@ -152,10 +154,10 @@ void Narrow_Sph_Sph(
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
 
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
+	dx_shape s_a = shapes_srv[e_a.shape_info & 0x3FFFFFFF];
+	dx_shape s_b = shapes_srv[e_b.shape_info & 0x3FFFFFFF];
 
-	bool swapped = e_a.shape_type > e_b.shape_type;
+	bool swapped = (e_a.shape_info >> 30) > (e_b.shape_info >> 30);
 	float3 p_a = swapped ? e_b.position : e_a.position;
 	float3 p_b = swapped ? e_a.position : e_b.position;
 	float r_a = swapped ? s_b.data.x : s_a.data.x;
@@ -183,10 +185,10 @@ void Narrow_Sph_Cap(
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
 
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
+	dx_shape s_a = shapes_srv[e_a.shape_info & 0x3FFFFFFF];
+	dx_shape s_b = shapes_srv[e_b.shape_info & 0x3FFFFFFF];
 
-	bool swapped = e_a.shape_type > e_b.shape_type;
+	bool swapped = (e_a.shape_info >> 30) > (e_b.shape_info >> 30);
 	float3 p_sph = swapped ? e_b.position : e_a.position;
 	float r_sph = swapped ? s_b.data.x : s_a.data.x;
 	float3 p_cap = swapped ? e_a.position : e_b.position;
@@ -217,10 +219,10 @@ void Narrow_Sph_Box(
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
 
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
+	dx_shape s_a = shapes_srv[e_a.shape_info & 0x3FFFFFFF];
+	dx_shape s_b = shapes_srv[e_b.shape_info & 0x3FFFFFFF];
 
-	bool swapped = e_a.shape_type > e_b.shape_type;
+	bool swapped = (e_a.shape_info >> 30) > (e_b.shape_info >> 30);
 	float3 p_sph = swapped ? e_b.position : e_a.position;
 	float r_sph = swapped ? s_b.data.x : s_a.data.x;
 	float3 p_box = swapped ? e_a.position : e_b.position;
@@ -250,10 +252,10 @@ void Narrow_Cap_Cap(
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
 
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
+	dx_shape s_a = shapes_srv[e_a.shape_info & 0x3FFFFFFF];
+	dx_shape s_b = shapes_srv[e_b.shape_info & 0x3FFFFFFF];
 
-	bool swapped = e_a.shape_type > e_b.shape_type;
+	bool swapped = (e_a.shape_info >> 30) > (e_b.shape_info >> 30);
 	float3 p_a = swapped ? e_b.position : e_a.position;
 	float4 rot_a = swapped ? e_b.rotation : e_a.rotation;
 	float hh_a = swapped ? s_b.data.x : s_a.data.x;
@@ -286,10 +288,10 @@ void Narrow_Cap_Box(
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
 
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
+	dx_shape s_a = shapes_srv[e_a.shape_info & 0x3FFFFFFF];
+	dx_shape s_b = shapes_srv[e_b.shape_info & 0x3FFFFFFF];
 
-	bool swapped = e_a.shape_type > e_b.shape_type;
+	bool swapped = (e_a.shape_info >> 30) > (e_b.shape_info >> 30);
 	float3 p_cap = swapped ? e_b.position : e_a.position;
 	float4 rot_cap = swapped ? e_b.rotation : e_a.rotation;
 	float hh_cap = swapped ? s_b.data.x : s_a.data.x;
@@ -321,10 +323,10 @@ void Narrow_Box_Box(
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
 
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
+	dx_shape s_a = shapes_srv[e_a.shape_info & 0x3FFFFFFF];
+	dx_shape s_b = shapes_srv[e_b.shape_info & 0x3FFFFFFF];
 
-	bool swapped = e_a.shape_type > e_b.shape_type;
+	bool swapped = (e_a.shape_info >> 30) > (e_b.shape_info >> 30);
 	float3 p_a = swapped ? e_b.position : e_a.position;
 	float4 rot_a = swapped ? e_b.rotation : e_a.rotation;
 	float3 ext_a = swapped ? s_b.data.xyz : s_a.data.xyz;

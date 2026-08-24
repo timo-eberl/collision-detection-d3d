@@ -1,9 +1,7 @@
 struct dx_entity {
 	float3 position;
-	uint shape_type;
+	uint shape_info;
 	float4 rotation;
-	uint shape_index;
-	uint3 pad;
 };
 
 struct dx_shape {
@@ -607,17 +605,17 @@ bool evaluate_narrow_phase(dx_entity e_a, dx_shape s_a, dx_entity e_b, dx_shape 
 	point_a = float3(0.0f, 0.0f, 0.0f);
 	point_b = float3(0.0f, 0.0f, 0.0f);
 
-	bool swapped = e_a.shape_type > e_b.shape_type;
+	bool swapped = (e_a.shape_info >> 30) > (e_b.shape_info >> 30);
 	
 	float3 p_a = swapped ? e_b.position : e_a.position;
 	float4 r_a = swapped ? e_b.rotation : e_a.rotation;
 	float4 d_a = swapped ? s_b.data : s_a.data;
-	uint type_a = swapped ? e_b.shape_type : e_a.shape_type;
+	uint type_a = swapped ? (e_b.shape_info >> 30) : (e_a.shape_info >> 30);
 
 	float3 p_b = swapped ? e_a.position : e_b.position;
 	float4 r_b = swapped ? e_a.rotation : e_b.rotation;
 	float4 d_b = swapped ? s_a.data : s_b.data;
-	uint type_b = swapped ? e_a.shape_type : e_b.shape_type;
+	uint type_b = swapped ? (e_a.shape_info >> 30) : (e_b.shape_info >> 30);
 
 	bool hit = false;
 	if (type_a == 0 && type_b == 0) {

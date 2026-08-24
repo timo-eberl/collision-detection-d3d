@@ -51,10 +51,12 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 	if (i >= item_count) return;
 
 	dx_entity e = entities_srv[i];
-	dx_shape s = shapes_srv[e.shape_index];
+	uint shape_type = e.shape_info >> 30;
+	uint shape_index = e.shape_info & 0x3FFFFFFF;
+	dx_shape s = shapes_srv[shape_index];
 
 	packed_aabb box = (packed_aabb)0;
-	if (e.shape_type == 0) {
+	if (shape_type == 0) {
 		float radius = s.data.x;
 		box.min_x = e.position.x - radius;
 		box.max_x = e.position.x + radius;
@@ -62,7 +64,7 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 		box.max_y = e.position.y + radius;
 		box.min_z = e.position.z - radius;
 		box.max_z = e.position.z + radius;
-	} else if (e.shape_type == 1) {
+	} else if (shape_type == 1) {
 		float half_height = s.data.x;
 		float radius = s.data.y;
 		float3 up = rotate_vector(float3(0.0f, 1.0f, 0.0f), e.rotation);
@@ -86,7 +88,7 @@ void cs_aabb_prep(uint3 DTid : SV_DispatchThreadID) {
 		box.min_z = e.position.z - half_size.z;
 		box.max_z = e.position.z + half_size.z;
 	}
-	box.shape_type = e.shape_type;
+	box.shape_type = shape_type;
 	box.pad = 0;
 	aabb_uav[i] = box;
 }
@@ -141,8 +143,8 @@ void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
 
-	dx_shape s_a = shapes_srv[e_a.shape_index];
-	dx_shape s_b = shapes_srv[e_b.shape_index];
+	dx_shape s_a = shapes_srv[e_a.shape_info & 0x3FFFFFFF];
+	dx_shape s_b = shapes_srv[e_b.shape_info & 0x3FFFFFFF];
 
 	float depth; 
 	float3 normal; 

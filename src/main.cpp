@@ -79,6 +79,15 @@ typedef struct {
 	uint32_t pad[3];
 } dx_collision_full; // 64 bytes
 
+// The 48-byte layout required to read the existing collision_test_data.bin file
+struct legacy_entity {
+	float position[3];
+	uint32_t shape_type;
+	float rotation[4];
+	uint32_t shape_index;
+	uint32_t pad[3];
+};
+
 struct recorded_frame {
 	uint32_t frame_index;
 	uint32_t rigid_count;
@@ -156,18 +165,24 @@ bool verify_results(const char* algorithm_name,
 	auto print_body_details = [&](uint32_t a_idx, uint32_t b_idx, uint32_t b_type) {
 		const dx_entity& a = rigids[a_idx];
 		const dx_entity& b = (b_type == 1) ? rigids[b_idx] : statics[b_idx];
-		const dx_shape& s_a = shapes[a.shape_index];
-		const dx_shape& s_b = shapes[b.shape_index];
+		
+		uint32_t a_shape_type = a.shape_info >> 30;
+		uint32_t a_shape_index = a.shape_info & 0x3FFFFFFF;
+		uint32_t b_shape_type = b.shape_info >> 30;
+		uint32_t b_shape_index = b.shape_info & 0x3FFFFFFF;
+		
+		const dx_shape& s_a = shapes[a_shape_index];
+		const dx_shape& s_b = shapes[b_shape_index];
 
 		const char* type_names[] = {"Sphere", "Capsule", "Box", "Convex"};
 
-		printf("  Body A (%s):\n", a.shape_type < 4 ? type_names[a.shape_type] : "Unknown");
+		printf("  Body A (%s):\n", a_shape_type < 4 ? type_names[a_shape_type] : "Unknown");
 		printf("    Pos:  (%f, %f, %f)\n", a.position[0], a.position[1], a.position[2]);
 		printf("    Rot:  (%f, %f, %f, %f)\n",
 			   a.rotation[0], a.rotation[1], a.rotation[2], a.rotation[3]);
 		printf("    Data: (%f, %f, %f, %f)\n", s_a.data[0], s_a.data[1], s_a.data[2], s_a.data[3]);
 
-		printf("  Body B (%s):\n", b.shape_type < 4 ? type_names[b.shape_type] : "Unknown");
+		printf("  Body B (%s):\n", b_shape_type < 4 ? type_names[b_shape_type] : "Unknown");
 		printf("    Pos:  (%f, %f, %f)\n", b.position[0], b.position[1], b.position[2]);
 		printf("    Rot:  (%f, %f, %f, %f)\n",
 			   b.rotation[0], b.rotation[1], b.rotation[2], b.rotation[3]);
@@ -316,8 +331,8 @@ int main() {
 						  frame_index <= BENCHMARK_FRAME_END);
 
 		if (!is_target) {
-			long skip_bytes = (long)(rigid_count * sizeof(dx_entity) +
-									 static_count * sizeof(dx_entity) +
+			long skip_bytes = (long)(rigid_count * sizeof(legacy_entity) +
+									 static_count * sizeof(legacy_entity) +
 									 shape_count * sizeof(dx_shape) +
 									 expected_col_count * sizeof(dx_collision_full));
 			if (skip_bytes > 0) fseek(file, skip_bytes, SEEK_CUR);
@@ -335,8 +350,38 @@ int main() {
 			rec.expected_cols = (dx_collision_full*)malloc(
 				expected_col_count * sizeof(dx_collision_full));
 
-			if (rigid_count > 0) fread(rec.rigids, sizeof(dx_entity), rigid_count, file);
-			if (static_count > 0) fread(rec.statics, sizeof(dx_entity), static_count, file);
+			if (rigid_count > 0) {
+				legacy_entity* temp = (legacy_entity*)malloc(rigid_count * sizeof(legacy_entity));
+				fread(temp, sizeof(legacy_entity), rigid_count, file);
+				for (uint32_t i = 0; i < rigid_count; ++i) {
+					rec.rigids[i].position[0] = temp[i].position[0];
+					rec.rigids[i].position[1] = temp[i].position[1];
+					rec.rigids[i].position[2] = temp[i].position[2];
+					rec.rigids[i].shape_info = (temp[i].shape_type << 30) | (temp[i].shape_index & 0x3FFFFFFF);
+					rec.rigids[i].rotation[0] = temp[i].rotation[0];
+					rec.rigids[i].rotation[1] = temp[i].rotation[1];
+					rec.rigids[i].rotation[2] = temp[i].rotation[2];
+					rec.rigids[i].rotation[3] = temp[i].rotation[3];
+				}
+				free(temp);
+			}
+			
+			if (static_count > 0) {
+				legacy_entity* temp = (legacy_entity*)malloc(static_count * sizeof(legacy_entity));
+				fread(temp, sizeof(legacy_entity), static_count, file);
+				for (uint32_t i = 0; i < static_count; ++i) {
+					rec.statics[i].position[0] = temp[i].position[0];
+					rec.statics[i].position[1] = temp[i].position[1];
+					rec.statics[i].position[2] = temp[i].position[2];
+					rec.statics[i].shape_info = (temp[i].shape_type << 30) | (temp[i].shape_index & 0x3FFFFFFF);
+					rec.statics[i].rotation[0] = temp[i].rotation[0];
+					rec.statics[i].rotation[1] = temp[i].rotation[1];
+					rec.statics[i].rotation[2] = temp[i].rotation[2];
+					rec.statics[i].rotation[3] = temp[i].rotation[3];
+				}
+				free(temp);
+			}
+			
 			if (shape_count > 0) fread(rec.shapes, sizeof(dx_shape), shape_count, file);
 			if (expected_col_count > 0) {
 				fread(rec.expected_cols, sizeof(dx_collision_full), expected_col_count, file);

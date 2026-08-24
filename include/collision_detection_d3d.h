@@ -4,14 +4,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
 typedef struct {
 	float position[3];
-	uint32_t shape_type; // 0 = Sphere, 1 = Capsule, 2 = OBB
+	// Bits 30-31: shape_type, Bits 0-29: shape_index. 0 = Sphere, 1 = Capsule, 2 = OBB
+	uint32_t shape_info;
 	float rotation[4];
-	uint32_t shape_index;
-	uint32_t pad[3];
-} dx_entity; // 48 bytes
+} dx_entity; // 32 bytes
 
 typedef union {
 	struct { float radius; uint32_t pad[3]; } sphere;
