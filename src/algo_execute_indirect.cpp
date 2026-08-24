@@ -20,9 +20,7 @@
 struct dx_potential_pair {
 	uint32_t a_index;
 	uint32_t b_index;
-	uint32_t b_type;
-	uint32_t pad;
-};
+}; // 8 bytes
 
 struct dx_indirect_command {
 	uint32_t pair_count;

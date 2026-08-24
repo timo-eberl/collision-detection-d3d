@@ -19,9 +19,7 @@
 struct dx_potential_pair {
 	uint32_t a_index;
 	uint32_t b_index;
-	uint32_t b_type;
-	uint32_t pad;
-};
+}; // 8 bytes
 
 typedef struct { float min_x, max_x, min_y, max_y, min_z, max_z; uint32_t shape_type; uint32_t pad; } packed_aabb;
 

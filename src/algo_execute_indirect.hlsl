@@ -103,9 +103,8 @@ void emit_overlap(uint a_idx, uint b_idx, uint b_type, uint type_a, uint type_b)
 	if (idx < max_collisions) {
 		dx_potential_pair p;
 		p.a_index = a_idx;
-		p.b_index = b_idx;
-		p.b_type = b_type;
-		p.pad = 0;
+		// Encode: 1 is rigid (use as-is). 0 is static (offset by rigid_count).
+		p.b_index = (b_type == 1) ? b_idx : (b_idx + rigid_count);
 		potential_pairs_uav[bin_idx * max_collisions + idx] = p;
 	}
 }
@@ -140,8 +139,8 @@ void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
 	dx_entity e_a = entities_srv[p.a_index];
 	dx_entity e_b;
 	
-	if (p.b_type == 1) e_b = entities_srv[p.b_index];
-	else e_b = statics_srv[p.b_index];
+	if (p.b_index < rigid_count) e_b = entities_srv[p.b_index];
+	else e_b = statics_srv[p.b_index - rigid_count];
 
 	dx_shape s_a = shapes_srv[e_a.shape_info & 0x3FFFFFFF];
 	dx_shape s_b = shapes_srv[e_b.shape_info & 0x3FFFFFFF];
@@ -158,7 +157,7 @@ void cs_narrow_phase(uint3 DTid : SV_DispatchThreadID) {
 		if (idx < max_collisions) {
 			dx_collision_compact comp;
 			comp.a_index = p.a_index;
-			comp.b_index = (p.b_type == 0) ? (p.b_index + rigid_count) : p.b_index;
+			comp.b_index = p.b_index;
 			comp.depth = depth;
 			comp.point_a = point_a;
 			comp.normal = encode_octahedral(normal);

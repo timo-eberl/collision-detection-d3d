@@ -11,8 +11,6 @@ struct dx_shape {
 struct dx_potential_pair {
 	uint a_index;
 	uint b_index;
-	uint b_type;
-	uint pad;
 };
 
 struct packed_aabb {
