@@ -23,13 +23,13 @@ Build and run this project in RelWithDebInfo Configuration:
 cmake -S . -B build/relwithdebinfo/ -DCDDX_ENABLE_PROFILER=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build/relwithdebinfo/ --config RelWithDebInfo && build/relwithdebinfo/collision_dx_app.exe
 ```
 
-## To-Do (for a later point)
+## To-Do
 
 - [x] Also do transformations (don't just take pre transformed collision data)
 - [x] Add box colliders
-- [ ] Use groupshared memory for shape data
+- [x] ~~Use groupshared memory for shape data~~ (not necessary as it's not a bottleneck)
 - [x] Reduce output to 32 byte: `uint32_t a_index; uint32_t b_index; float depth; float point_a[3]; float normal[2];`
-- [ ] Implement a proper broad phase
+- [x] Implement a proper broad phase
 
 ## Attribution
 
