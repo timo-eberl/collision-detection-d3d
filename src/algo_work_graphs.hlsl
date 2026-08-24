@@ -155,22 +155,14 @@ void write_collision(dx_potential_pair p, float depth, float3 normal, float3 poi
 }
 
 [Shader("node")]
-[NodeLaunch("coalescing")]
-[NumThreads(256, 1, 1)]
+[NodeLaunch("thread")]
 [NodeID("NarrowPhase", 0)]
-void Narrow_Sph_Sph(
-	[MaxRecords(256)] GroupNodeInputRecords<dx_potential_pair> input,
-	uint thread_idx : SV_GroupIndex
-) {
-	if (thread_idx >= input.Count()) return;
-
-	dx_potential_pair p = input[thread_idx];
+void Narrow_Sph_Sph(ThreadNodeInputRecord<dx_potential_pair> input) {
+	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
 	dx_entity e_b;
-	
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
-	
 	dx_shape s_a = shapes_srv[e_a.shape_index];
 	dx_shape s_b = shapes_srv[e_b.shape_index];
 
@@ -187,22 +179,14 @@ void Narrow_Sph_Sph(
 }
 
 [Shader("node")]
-[NodeLaunch("coalescing")]
-[NumThreads(256, 1, 1)]
+[NodeLaunch("thread")]
 [NodeID("NarrowPhase", 1)]
-void Narrow_Sph_Cap(
-	[MaxRecords(256)] GroupNodeInputRecords<dx_potential_pair> input,
-	uint thread_idx : SV_GroupIndex
-) {
-	if (thread_idx >= input.Count()) return;
-
-	dx_potential_pair p = input[thread_idx];
+void Narrow_Sph_Cap(ThreadNodeInputRecord<dx_potential_pair> input) {
+	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
 	dx_entity e_b;
-	
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
-	
 	dx_shape s_a = shapes_srv[e_a.shape_index];
 	dx_shape s_b = shapes_srv[e_b.shape_index];
 
@@ -222,22 +206,14 @@ void Narrow_Sph_Cap(
 }
 
 [Shader("node")]
-[NodeLaunch("coalescing")]
-[NumThreads(256, 1, 1)]
+[NodeLaunch("thread")]
 [NodeID("NarrowPhase", 2)]
-void Narrow_Sph_Box(
-	[MaxRecords(256)] GroupNodeInputRecords<dx_potential_pair> input,
-	uint thread_idx : SV_GroupIndex
-) {
-	if (thread_idx >= input.Count()) return;
-
-	dx_potential_pair p = input[thread_idx];
+void Narrow_Sph_Box(ThreadNodeInputRecord<dx_potential_pair> input) {
+	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
 	dx_entity e_b;
-	
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
-	
 	dx_shape s_a = shapes_srv[e_a.shape_index];
 	dx_shape s_b = shapes_srv[e_b.shape_index];
 
@@ -256,22 +232,14 @@ void Narrow_Sph_Box(
 }
 
 [Shader("node")]
-[NodeLaunch("coalescing")]
-[NumThreads(256, 1, 1)]
+[NodeLaunch("thread")]
 [NodeID("NarrowPhase", 3)]
-void Narrow_Cap_Cap(
-	[MaxRecords(256)] GroupNodeInputRecords<dx_potential_pair> input,
-	uint thread_idx : SV_GroupIndex
-) {
-	if (thread_idx >= input.Count()) return;
-
-	dx_potential_pair p = input[thread_idx];
+void Narrow_Cap_Cap(ThreadNodeInputRecord<dx_potential_pair> input) {
+	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
 	dx_entity e_b;
-	
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
-	
 	dx_shape s_a = shapes_srv[e_a.shape_index];
 	dx_shape s_b = shapes_srv[e_b.shape_index];
 
@@ -293,22 +261,14 @@ void Narrow_Cap_Cap(
 }
 
 [Shader("node")]
-[NodeLaunch("coalescing")]
-[NumThreads(256, 1, 1)]
+[NodeLaunch("thread")]
 [NodeID("NarrowPhase", 4)]
-void Narrow_Cap_Box(
-	[MaxRecords(256)] GroupNodeInputRecords<dx_potential_pair> input,
-	uint thread_idx : SV_GroupIndex
-) {
-	if (thread_idx >= input.Count()) return;
-
-	dx_potential_pair p = input[thread_idx];
+void Narrow_Cap_Box(ThreadNodeInputRecord<dx_potential_pair> input) {
+	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
 	dx_entity e_b;
-	
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
-	
 	dx_shape s_a = shapes_srv[e_a.shape_index];
 	dx_shape s_b = shapes_srv[e_b.shape_index];
 
@@ -329,22 +289,14 @@ void Narrow_Cap_Box(
 }
 
 [Shader("node")]
-[NodeLaunch("coalescing")]
-[NumThreads(256, 1, 1)]
+[NodeLaunch("thread")]
 [NodeID("NarrowPhase", 5)]
-void Narrow_Box_Box(
-	[MaxRecords(256)] GroupNodeInputRecords<dx_potential_pair> input,
-	uint thread_idx : SV_GroupIndex
-) {
-	if (thread_idx >= input.Count()) return;
-
-	dx_potential_pair p = input[thread_idx];
+void Narrow_Box_Box(ThreadNodeInputRecord<dx_potential_pair> input) {
+	dx_potential_pair p = input.Get();
 	dx_entity e_a = entities_srv[p.a_index];
 	dx_entity e_b;
-	
 	if (p.b_type == 1) e_b = entities_srv[p.b_index];
 	else e_b = statics_srv[p.b_index];
-	
 	dx_shape s_a = shapes_srv[e_a.shape_index];
 	dx_shape s_b = shapes_srv[e_b.shape_index];
 
