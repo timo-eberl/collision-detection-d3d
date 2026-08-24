@@ -26,7 +26,7 @@ struct dx_potential_pair {
 
 typedef struct { float min_x, max_x, min_y, max_y, min_z, max_z; uint32_t shape_type; uint32_t pad; } packed_aabb;
 
-// Matches D3D12_NODE_GPU_INPUT memory layout.
+// Matches D3D12_NODE_GPU_INPUT memory layout (24 bytes)
 struct dx_node_gpu_input {
 	uint32_t entrypoint_index;
 	uint32_t num_records;
@@ -44,8 +44,8 @@ struct dx_state_work_graphs {
 	ID3D12StateObject* work_graph_state_object;
 
 	D3D12_PROGRAM_IDENTIFIER wg_program_id;
-	uint32_t wg_entrypoint_index;
 	uint32_t wg_index;
+	uint32_t wg_entrypoint_indices[6];
 
 	ID3D12Resource* d_aabb_rigids;
 	size_t d_aabb_rigids_size;
@@ -189,31 +189,37 @@ extern "C" dx_state_work_graphs* dx_state_work_graphs_create(dx_shared_state* sh
 	dxil_lib_desc.DXILLibrary.pShaderBytecode = algo_work_graphs_lib_shader;
 	dxil_lib_desc.DXILLibrary.BytecodeLength = sizeof(algo_work_graphs_lib_shader);
 	
+	// This array order perfectly matches the bin_idx formula in emit_overlap
 	const wchar_t* export_names[] = {
-		L"RoutePairs",
 		L"Narrow_Sph_Sph",
 		L"Narrow_Sph_Cap",
-		L"Narrow_Sph_Box",
 		L"Narrow_Cap_Cap",
+		L"Narrow_Sph_Box",
 		L"Narrow_Cap_Box",
 		L"Narrow_Box_Box"
 	};
-	D3D12_EXPORT_DESC exports[7] = {};
-	for (int i = 0; i < 7; ++i) {
+
+	D3D12_EXPORT_DESC exports[6] = {};
+	for (int i = 0; i < 6; ++i) {
 		exports[i].Name = export_names[i];
 		exports[i].Flags = D3D12_EXPORT_FLAG_NONE;
 	}
-	dxil_lib_desc.NumExports = 7;
+	dxil_lib_desc.NumExports = 6;
 	dxil_lib_desc.pExports = exports;
 
 	subobjects[1].Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
 	subobjects[1].pDesc = &dxil_lib_desc;
 
-	D3D12_NODE_ID entry_node = { L"RoutePairs", 0 };
+	D3D12_NODE_ID entry_nodes[6] = {};
+	for (int i = 0; i < 6; ++i) {
+		entry_nodes[i].Name = export_names[i];
+		entry_nodes[i].ArrayIndex = 0;
+	}
+
 	D3D12_WORK_GRAPH_DESC wg_desc = {};
 	wg_desc.ProgramName = L"CollisionGraph";
-	wg_desc.NumEntrypoints = 1;
-	wg_desc.pEntrypoints = &entry_node;
+	wg_desc.NumEntrypoints = 6;
+	wg_desc.pEntrypoints = entry_nodes;
 	wg_desc.Flags = D3D12_WORK_GRAPH_FLAG_NONE;
 
 	subobjects[2].Type = D3D12_STATE_SUBOBJECT_TYPE_WORK_GRAPH;
@@ -248,7 +254,10 @@ extern "C" dx_state_work_graphs* dx_state_work_graphs_create(dx_shared_state* sh
 	ID3D12WorkGraphProperties* wg_props = nullptr;
 	s->work_graph_state_object->QueryInterface(IID_PPV_ARGS(&wg_props));
 	s->wg_index = wg_props->GetWorkGraphIndex(L"CollisionGraph");
-	s->wg_entrypoint_index = wg_props->GetEntrypointIndex(s->wg_index, entry_node);
+	
+	for (int i = 0; i < 6; ++i) {
+		s->wg_entrypoint_indices[i] = wg_props->GetEntrypointIndex(s->wg_index, entry_nodes[i]);
+	}
 
 	wg_props->Release();
 	so_props->Release();
@@ -311,13 +320,13 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 	}
 
 	ensure_dx_buffer(sh->device, &state->d_potential_pairs, &state->d_potential_pairs_size,
-					 kernel_max, sizeof(dx_potential_pair), D3D12_HEAP_TYPE_DEFAULT,
+					 6 * (size_t)kernel_max, sizeof(dx_potential_pair), D3D12_HEAP_TYPE_DEFAULT,
 					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
 
-	ensure_dx_buffer(sh->device, &state->d_gpu_input, &state->d_gpu_input_size, 1,
+	ensure_dx_buffer(sh->device, &state->d_gpu_input, &state->d_gpu_input_size, 6,
 					 sizeof(dx_node_gpu_input), D3D12_HEAP_TYPE_DEFAULT,
 					 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 1.0f);
-	ensure_dx_buffer(sh->device, &state->up_gpu_input, &state->up_gpu_input_size, 1,
+	ensure_dx_buffer(sh->device, &state->up_gpu_input, &state->up_gpu_input_size, 6,
 					 sizeof(dx_node_gpu_input), D3D12_HEAP_TYPE_UPLOAD,
 					 D3D12_RESOURCE_FLAG_NONE, 1.0f);
 
@@ -351,20 +360,22 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 	// Zero out collision count output
 	sh->cmd_list->CopyBufferRegion(sh->d_col_count, 0, sh->up_zero, 0, sizeof(uint32_t));
 
-	// Pre-fill the GPU Input struct header
-	dx_node_gpu_input input_header = {};
-	input_header.entrypoint_index = state->wg_entrypoint_index;
-	input_header.num_records = 0; // The broad phase will populate this atomically
-	input_header.records_address = state->d_potential_pairs->GetGPUVirtualAddress();
-	input_header.records_stride = sizeof(dx_potential_pair);
+	// Pre-fill the 6 GPU Input struct headers
+	dx_node_gpu_input input_headers[6] = {};
+	for (int i = 0; i < 6; ++i) {
+		input_headers[i].entrypoint_index = state->wg_entrypoint_indices[i];
+		input_headers[i].num_records = 0; // The broad phase will populate this atomically
+		input_headers[i].records_address = state->d_potential_pairs->GetGPUVirtualAddress() + i * kernel_max * sizeof(dx_potential_pair);
+		input_headers[i].records_stride = sizeof(dx_potential_pair);
+	}
 	
 	void* mapped = nullptr;
 	state->up_gpu_input->Map(0, nullptr, &mapped);
-	memcpy(mapped, &input_header, sizeof(dx_node_gpu_input));
+	memcpy(mapped, input_headers, 6 * sizeof(dx_node_gpu_input));
 	state->up_gpu_input->Unmap(0, nullptr);
 
 	sh->cmd_list->CopyBufferRegion(state->d_gpu_input, 0, state->up_gpu_input, 0,
-								   sizeof(dx_node_gpu_input));
+								   6 * sizeof(dx_node_gpu_input));
 
 	D3D12_GLOBAL_BARRIER gb_upload = {};
 	gb_upload.SyncBefore = D3D12_BARRIER_SYNC_COPY;
@@ -505,11 +516,17 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 		
 		cmd_list10->SetProgram(&set_prog);
 
-		D3D12_DISPATCH_GRAPH_DESC dispatch_desc = {};
-		dispatch_desc.Mode = D3D12_DISPATCH_MODE_NODE_GPU_INPUT;
-		dispatch_desc.NodeGPUInput = state->d_gpu_input->GetGPUVirtualAddress();
+		// Dispatch each of the 6 narrow phase entry points directly. 
+		// Since there are no barriers here, the GPU will execute these concurrently.
+		for (int i = 0; i < 6; ++i) {
+			D3D12_DISPATCH_GRAPH_DESC dispatch_desc = {};
+			dispatch_desc.Mode = D3D12_DISPATCH_MODE_NODE_GPU_INPUT;
+			// dx_node_gpu_input is strictly 24 bytes, which perfectly maintains the 8-byte alignment required by the spec
+			dispatch_desc.NodeGPUInput = state->d_gpu_input->GetGPUVirtualAddress() + (i * sizeof(dx_node_gpu_input));
 
-		cmd_list10->DispatchGraph(&dispatch_desc);
+			cmd_list10->DispatchGraph(&dispatch_desc);
+		}
+
 		cmd_list10->Release();
 
 		PIXEndEvent(sh->cmd_list);
