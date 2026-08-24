@@ -244,3 +244,50 @@ RX 9070 XT:
 [dx12] work_graphs (avg over 10)
     GPU: aabb_prep=0.035ms [0.034-0.037] build=0.404ms [0.387-0.436] query=0.639ms [0.611-0.740] work_graph=0.686ms [0.657-0.756] total=1.765ms [1.694ms-1.969ms]
     CPU: upload=2.788ms work=1.920ms download=3.868ms
+
+RTX 3050:
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.129ms [0.126-0.131] build=1.170ms [1.085-1.389] query=2.252ms [2.010-2.891] work_graph=4.248ms [3.749-4.674] total=7.798ms [7.480ms-8.067ms]
+    CPU: upload=3.267ms work=7.986ms download=4.425ms
+
+## 37d382ca1a2b3001b587ab4e2285e8829c779e05 (work graphs "optimization")
+
+RX 9070 XT:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.034ms [0.034-0.035] build=0.502ms [0.471-0.536] query=0.632ms [0.607-0.653] gap_narrow=0.207ms [0.195-0.227] narrow=0.296ms [0.288-0.300] total=1.671ms [1.622ms-1.709ms]
+    CPU: upload=2.858ms work=1.885ms download=3.973ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.037] build=0.494ms [0.468-0.548] query=0.661ms [0.626-0.762] disp_prep=0.024ms [0.023-0.026] narrow=0.178ms [0.171-0.193] total=1.391ms [1.350ms-1.566ms]
+    CPU: upload=2.869ms work=1.612ms download=3.988ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.035ms [0.034-0.037] build=0.483ms [0.468-0.554] query=0.641ms [0.604-0.740] work_graph=0.768ms [0.722-0.858] total=1.927ms [1.831ms-2.190ms]
+    CPU: upload=2.844ms work=2.142ms download=3.975ms
+
+RTX 3050:
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.128ms [0.125-0.132] build=1.127ms [1.103-1.147] query=2.123ms [2.016-2.238] work_graph=2.350ms [2.276-2.463] total=5.727ms [5.540ms-5.959ms]
+    CPU: upload=2.934ms work=5.869ms download=4.110ms
+
+## e02381fa153717d2f33f5bf4036e345c78edb918 (the actual work graphs optimization!)
+
+RX 9070 XT:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.036ms [0.035-0.037] build=0.516ms [0.484-0.554] query=0.636ms [0.615-0.656] gap_narrow=0.222ms [0.202-0.266] narrow=0.299ms [0.291-0.304] total=1.710ms [1.660ms-1.815ms]
+    CPU: upload=2.919ms work=1.940ms download=4.020ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.037ms [0.036-0.038] build=0.510ms [0.478-0.570] query=0.670ms [0.629-0.777] disp_prep=0.024ms [0.023-0.027] narrow=0.183ms [0.176-0.198] total=1.424ms [1.368ms-1.610ms]
+    CPU: upload=2.958ms work=1.661ms download=4.013ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.036ms [0.035-0.037] build=0.509ms [0.480-0.557] query=0.682ms [0.649-0.776] work_graph=0.281ms [0.272-0.293] total=1.508ms [1.449ms-1.636ms]
+    CPU: upload=2.931ms work=1.735ms download=4.038ms
+
+RTX 3050:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.130ms [0.127-0.134] build=1.210ms [1.080-1.776] query=2.116ms [2.010-2.230] gap_narrow=0.121ms [0.108-0.134] narrow=1.196ms [1.165-1.209] total=4.774ms [4.530ms-5.473ms]
+    CPU: upload=2.969ms work=4.917ms download=4.183ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.130ms [0.126-0.133] build=1.140ms [1.073-1.409] query=2.101ms [1.970-2.455] disp_prep=0.005ms [0.005-0.005] narrow=0.906ms [0.885-0.920] total=4.282ms [4.107ms-4.639ms]
+    CPU: upload=2.967ms work=4.428ms download=4.149ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.128ms [0.125-0.132] build=1.138ms [1.107-1.174] query=2.112ms [1.998-2.245] work_graph=1.090ms [1.044-1.285] total=4.468ms [4.286ms-4.653ms]
+    CPU: upload=2.956ms work=4.668ms download=4.156ms
