@@ -341,3 +341,29 @@ RTX 3050:
 [dx12] work_graphs (avg over 10)
     GPU: aabb_prep=0.128ms [0.125-0.132] build=1.138ms [1.107-1.174] query=2.112ms [1.998-2.245] work_graph=1.090ms [1.044-1.285] total=4.468ms [4.286ms-4.653ms]
     CPU: upload=2.956ms work=4.668ms download=4.156ms
+
+## 7d12379c9c9a5ab96c0257f37c1b888333e9663e (reduce dx_entity to 32 byte)
+
+RTX 5070 TI:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.030ms [0.028-0.030] build=0.357ms [0.353-0.362] query=0.530ms [0.508-0.560] gap_narrow=0.078ms [0.068-0.116] narrow=0.238ms [0.232-0.240] total=1.232ms [1.200ms-1.288ms]
+    CPU: upload=0.484ms work=1.327ms download=1.308ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.030ms [0.028-0.032] build=0.383ms [0.358-0.470] query=0.634ms [0.614-0.654] disp_prep=0.007ms [0.006-0.007] narrow=0.160ms [0.157-0.164] total=1.213ms [1.170ms-1.296ms]
+    CPU: upload=0.498ms work=1.306ms download=1.299ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.030ms [0.029-0.031] build=0.396ms [0.378-0.479] query=0.736ms [0.714-0.766] work_graph=0.249ms [0.244-0.258] total=1.411ms [1.375ms-1.507ms]
+    CPU: upload=0.550ms work=1.502ms download=1.298ms
+
+## 00af973159ebf834af013b05cbe95b678fb6cd76 (reduce dx_potential_pair to 8 byte)
+
+RTX 5070 TI:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.030ms [0.028-0.030] build=0.361ms [0.354-0.390] query=0.513ms [0.492-0.540] gap_narrow=0.078ms [0.072-0.099] narrow=0.236ms [0.230-0.240] total=1.218ms [1.196ms-1.242ms]
+    CPU: upload=0.490ms work=1.312ms download=1.314ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.030ms [0.029-0.031] build=0.369ms [0.361-0.401] query=0.618ms [0.599-0.641] disp_prep=0.007ms [0.006-0.009] narrow=0.160ms [0.157-0.162] total=1.185ms [1.159ms-1.212ms]
+    CPU: upload=0.498ms work=1.277ms download=1.305ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.030ms [0.028-0.032] build=0.387ms [0.377-0.418] query=0.727ms [0.712-0.741] work_graph=0.247ms [0.240-0.252] total=1.391ms [1.369ms-1.439ms]
+    CPU: upload=0.541ms work=1.480ms download=1.292ms
