@@ -357,6 +357,17 @@ RTX 5070 TI:
 
 ## 00af973159ebf834af013b05cbe95b678fb6cd76 (reduce dx_potential_pair to 8 byte)
 
+RX 9070 XT:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.032ms [0.032-0.034] build=0.491ms [0.476-0.526] query=0.624ms [0.613-0.641] gap_narrow=0.206ms [0.200-0.222] narrow=0.291ms [0.285-0.294] total=1.645ms [1.610ms-1.707ms]
+    CPU: upload=1.988ms work=1.853ms download=3.976ms
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.033ms [0.032-0.034] build=0.499ms [0.479-0.538] query=0.661ms [0.621-0.733] disp_prep=0.024ms [0.023-0.026] narrow=0.141ms [0.136-0.155] total=1.357ms [1.315ms-1.480ms]
+    CPU: upload=1.998ms work=1.587ms download=3.965ms
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.033ms [0.032-0.034] build=0.510ms [0.483-0.557] query=0.679ms [0.644-0.777] work_graph=0.215ms [0.209-0.236] total=1.437ms [1.383ms-1.604ms]
+    CPU: upload=1.967ms work=1.653ms download=3.979ms
+
 RTX 5070 TI:
 [dx12] simple_naive (avg over 10)
     GPU: aabb_prep=0.030ms [0.028-0.030] build=0.361ms [0.354-0.390] query=0.513ms [0.492-0.540] gap_narrow=0.078ms [0.072-0.099] narrow=0.236ms [0.230-0.240] total=1.218ms [1.196ms-1.242ms]
