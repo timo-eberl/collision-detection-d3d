@@ -272,7 +272,7 @@ dx_run_simple_naive(dx_shared_state* sh, dx_state_simple_naive* state, const dx_
 	}
 
 	PIXEndEvent(sh->cmd_list);
-	dx_profile_step(&prof, sh, "aabb_prep");
+	// dx_profile_step(&prof, sh, "aabb_prep");
 
 	D3D12_GLOBAL_BARRIER gb_prep = {};
 	gb_prep.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;

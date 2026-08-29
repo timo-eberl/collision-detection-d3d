@@ -192,14 +192,14 @@ static inline void dx_profile_log(const dx_profile* p, dx_profile_acc* a, const 
 	fprintf(stderr, " total=%.3fms [%.3fms-%.3fms]\n",
 			total_avg, a->total_min, a->total_max);
 
-	if (cn > 0) {
-		fprintf(stderr, "    CPU:");
-		for (int i = 0; i < cn; ++i) {
-			float avg = a->cpu_acc[i] / a->calls;
-			fprintf(stderr, " %s=%.3fms", p->cpu_labels[i], avg);
-		}
-		fprintf(stderr, "\n");
-	}
+	// if (cn > 0) {
+	// 	fprintf(stderr, "    CPU:");
+	// 	for (int i = 0; i < cn; ++i) {
+	// 		float avg = a->cpu_acc[i] / a->calls;
+	// 		fprintf(stderr, " %s=%.3fms", p->cpu_labels[i], avg);
+	// 	}
+	// 	fprintf(stderr, "\n");
+	// }
 }
 
 #else

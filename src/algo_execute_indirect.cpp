@@ -311,7 +311,7 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 	}
 
 	PIXEndEvent(sh->cmd_list);
-	dx_profile_step(&prof, sh, "aabb_prep");
+	// dx_profile_step(&prof, sh, "aabb_prep");
 
 	D3D12_GLOBAL_BARRIER gb_prep = {};
 	gb_prep.SyncBefore = D3D12_BARRIER_SYNC_COMPUTE_SHADING;
@@ -383,7 +383,7 @@ dx_run_execute_indirect(dx_shared_state* sh, dx_state_execute_indirect* state,
 	PIXBeginEvent(sh->cmd_list, PIX_COLOR(255, 128, 0), "Phase: Dispatch Prep");
 	sh->cmd_list->Dispatch(1, 1, 1);
 	PIXEndEvent(sh->cmd_list);
-	dx_profile_step(&prof, sh, "disp_prep");
+	// dx_profile_step(&prof, sh, "disp_prep");
 
 	// Transition the indirect arguments buffer to the mandatory format for execution
 	D3D12_GLOBAL_BARRIER gb_indirect = {};
