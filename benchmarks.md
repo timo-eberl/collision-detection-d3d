@@ -378,3 +378,19 @@ RTX 5070 TI:
 [dx12] work_graphs (avg over 10)
     GPU: aabb_prep=0.030ms [0.028-0.032] build=0.387ms [0.377-0.418] query=0.727ms [0.712-0.741] work_graph=0.247ms [0.240-0.252] total=1.391ms [1.369ms-1.439ms]
     CPU: upload=0.541ms work=1.480ms download=1.292ms
+
+RX 9070 XT box only:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.034ms [0.032-0.036] build=0.532ms [0.484-0.587] query=0.853ms [0.753-0.996] gap_narrow=0.221ms [0.209-0.233] narrow=0.221ms [0.185-0.261] total=1.861ms [1.712ms-2.088ms]
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.034ms [0.032-0.035] build=0.536ms [0.489-0.568] query=1.138ms [0.928-1.318] disp_prep=0.025ms [0.023-0.027] narrow=0.232ms [0.188-0.270] total=1.965ms [1.664ms-2.198ms]
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.035ms [0.033-0.036] build=0.521ms [0.485-0.545] query=1.139ms [0.924-1.314] work_graph=0.296ms [0.255-0.335] total=1.991ms [1.706ms-2.218ms]
+
+RX 9070 XT sphere only:
+[dx12] simple_naive (avg over 10)
+    GPU: aabb_prep=0.033ms [0.032-0.034] build=0.492ms [0.471-0.509] query=0.406ms [0.393-0.422] gap_narrow=0.223ms [0.209-0.242] narrow=0.055ms [0.054-0.056] total=1.210ms [1.181ms-1.236ms]
+[dx12] execute_indirect (avg over 10)
+    GPU: aabb_prep=0.033ms [0.032-0.034] build=0.497ms [0.470-0.550] query=0.430ms [0.415-0.484] disp_prep=0.023ms [0.022-0.026] narrow=0.062ms [0.061-0.066] total=1.046ms [1.009ms-1.160ms]
+[dx12] work_graphs (avg over 10)
+    GPU: aabb_prep=0.034ms [0.033-0.036] build=0.499ms [0.475-0.562] query=0.431ms [0.417-0.490] work_graph=0.139ms [0.137-0.147] total=1.102ms [1.071ms-1.235ms]
