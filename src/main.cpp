@@ -7,7 +7,6 @@
 #include <string.h>
 #include <vector>
 
-#define DEFERRED_VALIDATION 1
 #define WARMUP_FRAME_START 150
 #define WARMUP_FRAME_END 159
 #define BENCHMARK_FRAME_START 160
@@ -448,93 +447,92 @@ int main() {
 	dx_state_work_graphs_destroy(state_work_graphs);
 	dx_shared_state_destroy(sh);
 
-	// Validation
-	if (DEFERRED_VALIDATION && !preloaded_frames.empty()) {
-		printf("\n--- Deferred Validation ---\n");
+#ifdef CDDX_ENABLE_VALIDATION
+	printf("\n--- Deferred Validation ---\n");
 
-		// Setup pristine state context for validation passes to avoid any side-effects
-		dx_shared_state* sh_val = dx_shared_state_create();
-		dx_shared_state_set_profiling(sh_val, false);
+	// Setup pristine state context for validation passes to avoid any side-effects
+	dx_shared_state* sh_val = dx_shared_state_create();
+	dx_shared_state_set_profiling(sh_val, false);
 
-		dx_state_simple_naive* state_naive_val = nullptr;
-		dx_state_execute_indirect* state_indirect_val = nullptr;
-		dx_state_work_graphs* state_work_graphs_val = nullptr;
+	dx_state_simple_naive* state_naive_val = nullptr;
+	dx_state_execute_indirect* state_indirect_val = nullptr;
+	dx_state_work_graphs* state_work_graphs_val = nullptr;
 
-		if (ENABLE_ALGO_NAIVE) state_naive_val = dx_state_simple_naive_create(sh_val);
-		if (ENABLE_ALGO_INDIRECT) state_indirect_val = dx_state_execute_indirect_create(sh_val);
-		if (ENABLE_ALGO_WORK_GRAPHS) state_work_graphs_val = dx_state_work_graphs_create(sh_val);
+	if (ENABLE_ALGO_NAIVE) state_naive_val = dx_state_simple_naive_create(sh_val);
+	if (ENABLE_ALGO_INDIRECT) state_indirect_val = dx_state_execute_indirect_create(sh_val);
+	if (ENABLE_ALGO_WORK_GRAPHS) state_work_graphs_val = dx_state_work_graphs_create(sh_val);
 
-		for (size_t k = 0; k < preloaded_frames.size(); ++k) {
-			recorded_frame& rec = preloaded_frames[k];
+	for (size_t k = 0; k < preloaded_frames.size(); ++k) {
+		recorded_frame& rec = preloaded_frames[k];
 
-			if (rec.expected_col_count > 0) {
-				qsort(rec.expected_cols, rec.expected_col_count, sizeof(dx_collision_full),
-					  compare_collisions);
-			}
-
-			bool passed_all = true;
-
-			if (ENABLE_ALGO_NAIVE) {
-				uint32_t cnt = 0;
-				dx_collision_compact* cols = dx_run_simple_naive(
-					sh_val, state_naive_val, &grid_config, rec.rigids, rec.rigid_count,
-					rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
-
-				passed_all &= verify_results("Naive", cols, cnt, rec.expected_cols,
-											 rec.expected_col_count, rec.rigids, rec.rigid_count,
-											 rec.statics, rec.shapes, rec.frame_index);
-			}
-
-			if (ENABLE_ALGO_INDIRECT) {
-				uint32_t cnt = 0;
-				dx_collision_compact* cols = dx_run_execute_indirect(
-					sh_val, state_indirect_val, &grid_config, rec.rigids, rec.rigid_count,
-					rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
-
-				passed_all &= verify_results("Indirect", cols, cnt, rec.expected_cols,
-											 rec.expected_col_count, rec.rigids, rec.rigid_count,
-											 rec.statics, rec.shapes, rec.frame_index);
-			}
-
-			if (ENABLE_ALGO_WORK_GRAPHS) {
-				uint32_t cnt = 0;
-				dx_collision_compact* cols = dx_run_work_graphs(
-					sh_val, state_work_graphs_val, &grid_config, rec.rigids, rec.rigid_count,
-					rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
-
-				passed_all &= verify_results("Work Graphs", cols, cnt, rec.expected_cols,
-											 rec.expected_col_count, rec.rigids, rec.rigid_count,
-											 rec.statics, rec.shapes, rec.frame_index);
-			}
-
-			if (passed_all) {
-				printf("✅ Frame %u PASSED: %u expected collisions\n",
-					   rec.frame_index, rec.expected_col_count);
-			}
-
-			free(rec.rigids);
-			free(rec.statics);
-			free(rec.shapes);
-			free(rec.expected_cols);
+		if (rec.expected_col_count > 0) {
+			qsort(rec.expected_cols, rec.expected_col_count, sizeof(dx_collision_full),
+					compare_collisions);
 		}
 
-		dx_state_simple_naive_destroy(state_naive_val);
-		dx_state_execute_indirect_destroy(state_indirect_val);
-		dx_state_work_graphs_destroy(state_work_graphs_val);
-		dx_shared_state_destroy(sh_val);
+		bool passed_all = true;
 
-		// Flush, so stdout and stderr messages are printed in order (OS dependent)
-		fflush(stdout);
-		fflush(stderr);
-	} else {
-		for (size_t k = 0; k < preloaded_frames.size(); ++k) {
-			recorded_frame& rec = preloaded_frames[k];
-			free(rec.rigids);
-			free(rec.statics);
-			free(rec.shapes);
-			free(rec.expected_cols);
+		if (ENABLE_ALGO_NAIVE) {
+			uint32_t cnt = 0;
+			dx_collision_compact* cols = dx_run_simple_naive(
+				sh_val, state_naive_val, &grid_config, rec.rigids, rec.rigid_count,
+				rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
+
+			passed_all &= verify_results("Naive", cols, cnt, rec.expected_cols,
+											rec.expected_col_count, rec.rigids, rec.rigid_count,
+											rec.statics, rec.shapes, rec.frame_index);
 		}
+
+		if (ENABLE_ALGO_INDIRECT) {
+			uint32_t cnt = 0;
+			dx_collision_compact* cols = dx_run_execute_indirect(
+				sh_val, state_indirect_val, &grid_config, rec.rigids, rec.rigid_count,
+				rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
+
+			passed_all &= verify_results("Indirect", cols, cnt, rec.expected_cols,
+											rec.expected_col_count, rec.rigids, rec.rigid_count,
+											rec.statics, rec.shapes, rec.frame_index);
+		}
+
+		if (ENABLE_ALGO_WORK_GRAPHS) {
+			uint32_t cnt = 0;
+			dx_collision_compact* cols = dx_run_work_graphs(
+				sh_val, state_work_graphs_val, &grid_config, rec.rigids, rec.rigid_count,
+				rec.statics, rec.static_count, rec.shapes, rec.shape_count, true, &cnt);
+
+			passed_all &= verify_results("Work Graphs", cols, cnt, rec.expected_cols,
+											rec.expected_col_count, rec.rigids, rec.rigid_count,
+											rec.statics, rec.shapes, rec.frame_index);
+		}
+
+		if (passed_all) {
+			printf("✅ Frame %u PASSED: %u expected collisions\n",
+					rec.frame_index, rec.expected_col_count);
+		}
+
+		free(rec.rigids);
+		free(rec.statics);
+		free(rec.shapes);
+		free(rec.expected_cols);
 	}
+
+	dx_state_simple_naive_destroy(state_naive_val);
+	dx_state_execute_indirect_destroy(state_indirect_val);
+	dx_state_work_graphs_destroy(state_work_graphs_val);
+	dx_shared_state_destroy(sh_val);
+
+	// Flush, so stdout and stderr messages are printed in order (OS dependent)
+	fflush(stdout);
+	fflush(stderr);
+#else
+	for (size_t k = 0; k < preloaded_frames.size(); ++k) {
+		recorded_frame& rec = preloaded_frames[k];
+		free(rec.rigids);
+		free(rec.statics);
+		free(rec.shapes);
+		free(rec.expected_cols);
+	}
+#endif
 
 	return 0;
 }

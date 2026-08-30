@@ -3,6 +3,7 @@ project(collision_dx LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 
 option(CDDX_ENABLE_PROFILER "Print profiling messages to stderr" ON)
+option(CDDX_ENABLE_VALIDATION "Print profiling messages to stderr" ON)
 
 if(POLICY CMP0135)
 	cmake_policy(SET CMP0135 NEW)
@@ -315,6 +316,10 @@ endif()
 
 if(CDDX_ENABLE_PROFILER)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC CDDX_ENABLE_PROFILER)
+endif()
+
+if(CDDX_ENABLE_VALIDATION)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC CDDX_ENABLE_VALIDATION)
 endif()
 
 # Build executable
