@@ -23,6 +23,16 @@ Build and run this project in RelWithDebInfo Configuration:
 cmake -S . -B build/relwithdebinfo/ -DCDDX_ENABLE_PROFILER=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build/relwithdebinfo/ --config RelWithDebInfo && build/relwithdebinfo/collision_dx_app.exe
 ```
 
+## Benchmark using scripts
+
+```
+cd ~/projects/tics/
+./demos/benchmark_narrowphase/prepare_benchmarks.sh
+mv -a ~/projects/tics/bench_narrow_data/ ~/projects/collision_detection_d3d/bench_narrow_data/
+cd ~/projects/collision_detection_d3d/
+./run_benchmark.sh
+```
+
 ## To-Do
 
 - [x] Also do transformations (don't just take pre transformed collision data)
