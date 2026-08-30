@@ -528,7 +528,7 @@ dx_run_work_graphs(dx_shared_state* sh, dx_state_work_graphs* state, const dx_gr
 		cmd_list10->Release();
 
 		PIXEndEvent(sh->cmd_list);
-		dx_profile_step(&prof, sh, "work_graph");
+		dx_profile_step(&prof, sh, "narrow");
 	}
 
 	// --- Readback ---
