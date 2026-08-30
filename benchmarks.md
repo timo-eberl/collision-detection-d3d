@@ -358,39 +358,56 @@ RTX 5070 TI:
 ## 00af973159ebf834af013b05cbe95b678fb6cd76 (reduce dx_potential_pair to 8 byte)
 
 RX 9070 XT:
+[dx12] Initialized D3D12 Device on: AMD Radeon RX 9070 XT
 [dx12] simple_naive (avg over 10)
-    GPU: aabb_prep=0.032ms [0.032-0.034] build=0.491ms [0.476-0.526] query=0.624ms [0.613-0.641] gap_narrow=0.206ms [0.200-0.222] narrow=0.291ms [0.285-0.294] total=1.645ms [1.610ms-1.707ms]
-    CPU: upload=1.988ms work=1.853ms download=3.976ms
+    GPU: build=0.502ms [0.490-0.525] query=0.621ms [0.594-0.643] gap_narrow=0.210ms [0.202-0.222] narrow=0.285ms [0.278-0.288] total=1.618ms [1.589ms-1.644ms]
 [dx12] execute_indirect (avg over 10)
-    GPU: aabb_prep=0.033ms [0.032-0.034] build=0.499ms [0.479-0.538] query=0.661ms [0.621-0.733] disp_prep=0.024ms [0.023-0.026] narrow=0.141ms [0.136-0.155] total=1.357ms [1.315ms-1.480ms]
-    CPU: upload=1.998ms work=1.587ms download=3.965ms
+    GPU: build=0.503ms [0.487-0.535] query=0.681ms [0.660-0.705] narrow=0.140ms [0.137-0.141] total=1.324ms [1.291ms-1.364ms]
 [dx12] work_graphs (avg over 10)
-    GPU: aabb_prep=0.033ms [0.032-0.034] build=0.510ms [0.483-0.557] query=0.679ms [0.644-0.777] work_graph=0.215ms [0.209-0.236] total=1.437ms [1.383ms-1.604ms]
-    CPU: upload=1.967ms work=1.653ms download=3.979ms
-
-RTX 5070 TI:
-[dx12] simple_naive (avg over 10)
-    GPU: aabb_prep=0.030ms [0.028-0.030] build=0.361ms [0.354-0.390] query=0.513ms [0.492-0.540] gap_narrow=0.078ms [0.072-0.099] narrow=0.236ms [0.230-0.240] total=1.218ms [1.196ms-1.242ms]
-    CPU: upload=0.490ms work=1.312ms download=1.314ms
-[dx12] execute_indirect (avg over 10)
-    GPU: aabb_prep=0.030ms [0.029-0.031] build=0.369ms [0.361-0.401] query=0.618ms [0.599-0.641] disp_prep=0.007ms [0.006-0.009] narrow=0.160ms [0.157-0.162] total=1.185ms [1.159ms-1.212ms]
-    CPU: upload=0.498ms work=1.277ms download=1.305ms
-[dx12] work_graphs (avg over 10)
-    GPU: aabb_prep=0.030ms [0.028-0.032] build=0.387ms [0.377-0.418] query=0.727ms [0.712-0.741] work_graph=0.247ms [0.240-0.252] total=1.391ms [1.369ms-1.439ms]
-    CPU: upload=0.541ms work=1.480ms download=1.292ms
+    GPU: build=0.527ms [0.497-0.645] query=0.683ms [0.661-0.705] narrow=0.200ms [0.198-0.202] total=1.410ms [1.359ms-1.504ms]
 
 RX 9070 XT box only:
+[dx12] Initialized D3D12 Device on: AMD Radeon RX 9070 XT
 [dx12] simple_naive (avg over 10)
-    GPU: aabb_prep=0.034ms [0.032-0.036] build=0.532ms [0.484-0.587] query=0.853ms [0.753-0.996] gap_narrow=0.221ms [0.209-0.233] narrow=0.221ms [0.185-0.261] total=1.861ms [1.712ms-2.088ms]
+    GPU: build=0.529ms [0.500-0.561] query=0.855ms [0.758-1.007] gap_narrow=0.213ms [0.206-0.220] narrow=0.221ms [0.186-0.262] total=1.818ms [1.678ms-2.033ms]
 [dx12] execute_indirect (avg over 10)
-    GPU: aabb_prep=0.034ms [0.032-0.035] build=0.536ms [0.489-0.568] query=1.138ms [0.928-1.318] disp_prep=0.025ms [0.023-0.027] narrow=0.232ms [0.188-0.270] total=1.965ms [1.664ms-2.198ms]
+    GPU: build=0.538ms [0.489-0.571] query=1.116ms [0.930-1.316] narrow=0.231ms [0.193-0.271] total=1.885ms [1.613ms-2.151ms]
 [dx12] work_graphs (avg over 10)
-    GPU: aabb_prep=0.035ms [0.033-0.036] build=0.521ms [0.485-0.545] query=1.139ms [0.924-1.314] work_graph=0.296ms [0.255-0.335] total=1.991ms [1.706ms-2.218ms]
+    GPU: build=0.518ms [0.494-0.559] query=1.116ms [0.923-1.310] narrow=0.291ms [0.255-0.332] total=1.925ms [1.680ms-2.182ms]
 
 RX 9070 XT sphere only:
+[dx12] Initialized D3D12 Device on: AMD Radeon RX 9070 XT
 [dx12] simple_naive (avg over 10)
-    GPU: aabb_prep=0.033ms [0.032-0.034] build=0.492ms [0.471-0.509] query=0.406ms [0.393-0.422] gap_narrow=0.223ms [0.209-0.242] narrow=0.055ms [0.054-0.056] total=1.210ms [1.181ms-1.236ms]
+    GPU: build=0.498ms [0.477-0.516] query=0.405ms [0.389-0.419] gap_narrow=0.219ms [0.201-0.235] narrow=0.055ms [0.054-0.056] total=1.177ms [1.151ms-1.212ms]
 [dx12] execute_indirect (avg over 10)
-    GPU: aabb_prep=0.033ms [0.032-0.034] build=0.497ms [0.470-0.550] query=0.430ms [0.415-0.484] disp_prep=0.023ms [0.022-0.026] narrow=0.062ms [0.061-0.066] total=1.046ms [1.009ms-1.160ms]
+    GPU: build=0.500ms [0.486-0.524] query=0.421ms [0.409-0.436] narrow=0.064ms [0.063-0.065] total=0.985ms [0.971ms-1.011ms]
 [dx12] work_graphs (avg over 10)
-    GPU: aabb_prep=0.034ms [0.033-0.036] build=0.499ms [0.475-0.562] query=0.431ms [0.417-0.490] work_graph=0.139ms [0.137-0.147] total=1.102ms [1.071ms-1.235ms]
+    GPU: build=0.505ms [0.483-0.556] query=0.425ms [0.417-0.435] narrow=0.137ms [0.137-0.138] total=1.067ms [1.043ms-1.119ms]
+
+RTX 5070 Ti:
+[dx12] Initialized D3D12 Device on: NVIDIA GeForce RTX 5070 Ti
+[dx12] simple_naive (avg over 10)
+    GPU: build=0.389ms [0.381-0.422] query=0.504ms [0.475-0.532] gap_narrow=0.074ms [0.071-0.080] narrow=0.226ms [0.220-0.230] total=1.194ms [1.152ms-1.227ms]
+[dx12] execute_indirect (avg over 10)
+    GPU: build=0.398ms [0.392-0.405] query=0.562ms [0.537-0.584] narrow=0.156ms [0.149-0.161] total=1.116ms [1.091ms-1.137ms]
+[dx12] work_graphs (avg over 10)
+    GPU: build=0.421ms [0.409-0.452] query=0.578ms [0.557-0.597] narrow=0.242ms [0.238-0.246] total=1.241ms [1.207ms-1.277ms]
+
+RTX 5070 Ti box only:
+[dx12] Initialized D3D12 Device on: NVIDIA GeForce RTX 5070 Ti
+[dx12] simple_naive (avg over 10)
+    GPU: build=0.406ms [0.399-0.415] query=0.692ms [0.626-0.733] gap_narrow=0.076ms [0.066-0.106] narrow=0.171ms [0.150-0.186] total=1.344ms [1.257ms-1.425ms]
+[dx12] execute_indirect (avg over 10)
+    GPU: build=0.418ms [0.409-0.428] query=0.707ms [0.639-0.760] narrow=0.192ms [0.170-0.208] total=1.318ms [1.223ms-1.396ms]
+[dx12] work_graphs (avg over 10)
+    GPU: build=0.439ms [0.433-0.448] query=0.701ms [0.628-0.744] narrow=0.280ms [0.254-0.300] total=1.420ms [1.321ms-1.477ms]
+
+RTX 5070 Ti sphere only:
+[dx12] Initialized D3D12 Device on: NVIDIA GeForce RTX 5070 Ti
+[dx12] simple_naive (avg over 10)
+    GPU: build=0.393ms [0.385-0.429] query=0.296ms [0.290-0.307] gap_narrow=0.078ms [0.064-0.124] narrow=0.059ms [0.057-0.060] total=0.825ms [0.801ms-0.879ms]
+[dx12] execute_indirect (avg over 10)
+    GPU: build=0.395ms [0.391-0.399] query=0.317ms [0.311-0.330] narrow=0.077ms [0.075-0.079] total=0.789ms [0.779ms-0.803ms]
+[dx12] work_graphs (avg over 10)
+    GPU: build=0.415ms [0.404-0.446] query=0.316ms [0.308-0.329] narrow=0.143ms [0.141-0.147] total=0.874ms [0.858ms-0.903ms]
+
