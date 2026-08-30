@@ -6,3 +6,5 @@ build/
 build_release/
 build_debug/
 *.bin
+bench_narrow_data/
+bench_narrow_logs/
