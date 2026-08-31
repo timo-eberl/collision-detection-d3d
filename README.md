@@ -27,6 +27,7 @@ Alternatively, you can use scripts in the repositories to run the benchmarks tha
 
 ```sh
 cd ~/projects/tics/
+git checkout 2d348fdbc063158c09a752598e01590516355489 # later commits might not work
 ./demos/benchmark_narrowphase/prepare_benchmarks.sh
 mv -a ~/projects/tics/bench_narrow_data/ ~/projects/collision_detection_d3d/bench_narrow_data/
 cd ~/projects/collision_detection_d3d/
