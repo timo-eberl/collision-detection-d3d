@@ -15,7 +15,7 @@ Compare the performance of multiple versions:
 
 The input and expected output (`collision_test_data.bin`) can be generated with [Tics](https://github.com/timo-eberl/tics). Use a demo with only the supported shapes. For example:
 ```bash
-cmake -S . -B build_release/ -DCMAKE_BUILD_TYPE=Release -DTICS_ENABLE_DEBUG_VIEW=OFF -DTICS_BUILD_TESTS=OFF -DNARROW_BENCHMARK_STEPS=200 -DNARROW_BENCHMARK_PARTICLE_COUNT=300000 && cmake --build build_release/ --config Release && ./build_release/bin/benchmark_narrowphase
+cmake -S . -B build_release/ -DCMAKE_BUILD_TYPE=Release -DTICS_ENABLE_DEBUG_VIEW=OFF -DTICS_BUILD_TESTS=OFF -DNARROW_BENCHMARK_STEPS=200 -DNARROW_BENCHMARK_SPHERE_COUNT=100000 -DNARROW_BENCHMARK_CAPSULE_COUNT=100000 -DNARROW_BENCHMARK_BOX_COUNT=100000 && cmake --build build_release/ --config Release && ./build_release/bin/benchmark_narrowphase
 ```
 
 Build and run this project in RelWithDebInfo Configuration:
