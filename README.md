@@ -9,13 +9,13 @@ Implement a broad phase and narrow phase on GPU. We'll support spheres, capsules
 Compare the performance of multiple versions:
 - Simple Naive:    Broad phase -> Potential pairs list -> Narrow phase (uber shader)
 - ExecuteIndirect: Broad phase -> Potential binned pairs list -> ExecuteIndirect Narrow phase (~~individual shaders~~ uber shader)
-- Work Graphs:     Broad phase -> ExecuteIndirect Narrow phase (individual shaders)
+- Work Graphs:     Broad phase -> Work Graphs Narrow phase (individual shaders)
 
 ## Instructions
 
 The input and expected output (`collision_test_data.bin`) can be generated with [Tics](https://github.com/timo-eberl/tics). Use a demo with only the supported shapes. For example:
 ```bash
-cmake -S . -B build_release/ -DCMAKE_BUILD_TYPE=Release -DTICS_ENABLE_DEBUG_VIEW=OFF -DTICS_BUILD_TESTS=OFF -DNARROW_BENCHMARK_STEPS=200 -DNARROW_BENCHMARK_PARTICLE_COUNT=100000 && cmake --build build_release/ --config Release && ./build_release/bin/benchmark_narrowphase
+cmake -S . -B build_release/ -DCMAKE_BUILD_TYPE=Release -DTICS_ENABLE_DEBUG_VIEW=OFF -DTICS_BUILD_TESTS=OFF -DNARROW_BENCHMARK_STEPS=200 -DNARROW_BENCHMARK_PARTICLE_COUNT=300000 && cmake --build build_release/ --config Release && ./build_release/bin/benchmark_narrowphase
 ```
 
 Build and run this project in RelWithDebInfo Configuration:
@@ -23,23 +23,15 @@ Build and run this project in RelWithDebInfo Configuration:
 cmake -S . -B build/relwithdebinfo/ -DCDDX_ENABLE_PROFILER=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build/relwithdebinfo/ --config RelWithDebInfo && build/relwithdebinfo/collision_dx_app.exe
 ```
 
-## Benchmark using scripts
+Alternatively, you can use scripts in the repositories to run the benchmarks that are used in the paper. After cloning tics and this repository:
 
-```
+```sh
 cd ~/projects/tics/
 ./demos/benchmark_narrowphase/prepare_benchmarks.sh
 mv -a ~/projects/tics/bench_narrow_data/ ~/projects/collision_detection_d3d/bench_narrow_data/
 cd ~/projects/collision_detection_d3d/
 ./run_benchmark.sh
 ```
-
-## To-Do
-
-- [x] Also do transformations (don't just take pre transformed collision data)
-- [x] Add box colliders
-- [x] ~~Use groupshared memory for shape data~~ (not necessary as it's not a bottleneck)
-- [x] Reduce output to 32 byte: `uint32_t a_index; uint32_t b_index; float depth; float point_a[3]; float normal[2];`
-- [x] Implement a proper broad phase
 
 ## Attribution
 
